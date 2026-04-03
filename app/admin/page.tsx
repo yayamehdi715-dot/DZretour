@@ -2,53 +2,25 @@
 
 import { useState } from "react"
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts"
 import {
-  Shield,
-  TrendingUp,
-  AlertTriangle,
-  Clock,
-  Phone,
-  MapPin,
-  FileText,
-  LogOut,
-  RefreshCw,
-  Eye,
-  EyeOff,
+  Shield, TrendingUp, AlertTriangle, Clock, Phone,
+  MapPin, FileText, LogOut, RefreshCw, Eye, EyeOff,
+  ChevronUp, ChevronDown, Activity,
 } from "lucide-react"
 
 interface AdminStats {
-  overview: {
-    total: number
-    today: number
-    week: number
-    month: number
-  }
+  overview: { total: number; today: number; week: number; month: number }
   reasons: { name: string; count: number }[]
   topNumbers: { phone: string; count: number }[]
-  recentReports: {
-    phone: string
-    reason: string
-    customReason?: string
-    country?: string
-    city?: string
-    createdAt: string
-  }[]
+  recentReports: { phone: string; reason: string; customReason?: string; country?: string; city?: string; createdAt: string }[]
   dailyChart: { date: string; count: number }[]
   countries: { country: string; count: number }[]
 }
 
-const COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe"]
+const COLORS = ["#dc2626", "#f59e0b", "#6366f1", "#10b981", "#8b5cf6", "#f43f5e"]
 
 const REASON_LABELS: Record<string, string> = {
   "Product dissatisfaction": "Insatisfaction produit",
@@ -63,55 +35,41 @@ const REASON_LABELS: Record<string, string> = {
   "أخرى": "Autre",
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: any
-  label: string
-  value: number
-  color: string
-}) {
-  return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6 flex items-center gap-4 shadow-sm">
-      <div className={`p-3 rounded-xl ${color}`}>
-        <Icon className="h-6 w-6 text-white" />
-      </div>
-      <div>
-        <p className="text-sm text-muted-foreground font-medium">{label}</p>
-        <p className="text-3xl font-bold text-foreground">{value.toLocaleString()}</p>
-      </div>
-    </div>
-  )
-}
-
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
-}
-
-function formatDateTime(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleString("fr-FR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-// Merge duplicate reasons (AR/FR)
 function mergeReasons(reasons: { name: string; count: number }[]) {
   const merged: Record<string, number> = {}
   for (const r of reasons) {
     const label = REASON_LABELS[r.name] || r.name
     merged[label] = (merged[label] || 0) + r.count
   }
-  return Object.entries(merged)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
+  return Object.entries(merged).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+}
+
+function formatDate(s: string) {
+  return new Date(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
+}
+function formatDateTime(s: string) {
+  return new Date(s).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+}
+
+function StatCard({ icon: Icon, label, value, sub, color, trend }: any) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between mb-4">
+        <div className={`p-3 rounded-xl ${color}`}>
+          <Icon className="h-5 w-5 text-white" />
+        </div>
+        {trend !== undefined && (
+          <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${trend >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>
+            {trend >= 0 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {Math.abs(trend)}%
+          </span>
+        )}
+      </div>
+      <p className="text-3xl font-bold text-gray-900 mb-1">{value.toLocaleString()}</p>
+      <p className="text-sm text-gray-500 font-medium">{label}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    </div>
+  )
 }
 
 export default function AdminPage() {
@@ -122,32 +80,25 @@ export default function AdminPage() {
   const [error, setError] = useState("")
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   async function fetchStats(pwd: string, refreshing = false) {
-    if (refreshing) setIsRefreshing(true)
-    else setIsLoading(true)
+    refreshing ? setIsRefreshing(true) : setIsLoading(true)
     setError("")
-
     try {
       const res = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: pwd }),
       })
-
       const data = await res.json()
-
       if (!res.ok) {
-        if (res.status === 401) {
-          setError("Mot de passe incorrect")
-        } else {
-          setError("Erreur serveur, réessayez")
-        }
+        setError(res.status === 401 ? "Mot de passe incorrect" : `Erreur: ${data.error || "Serveur indisponible"}`)
         return
       }
-
       setStats(data)
       setIsAuthenticated(true)
+      setLastUpdated(new Date())
     } catch {
       setError("Impossible de contacter le serveur")
     } finally {
@@ -156,35 +107,23 @@ export default function AdminPage() {
     }
   }
 
-  function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
-    if (!password.trim()) return
-    fetchStats(password)
-  }
-
-  function handleLogout() {
-    setIsAuthenticated(false)
-    setStats(null)
-    setPassword("")
-  }
-
-  // --- LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-md">
-          <div className="bg-card border border-border/50 rounded-3xl p-8 shadow-lg">
-            <div className="flex flex-col items-center mb-8">
-              <div className="p-4 bg-primary/10 rounded-2xl mb-4">
-                <Shield className="h-10 w-10 text-primary" />
-              </div>
-              <h1 className="text-2xl font-bold text-foreground">Espace Admin</h1>
-              <p className="text-muted-foreground text-sm mt-1">DzRetour — Tableau de bord</p>
+          {/* Logo area */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl mb-4">
+              <Shield className="h-8 w-8 text-primary" />
             </div>
+            <h1 className="text-2xl font-bold text-gray-900">Espace Admin</h1>
+            <p className="text-gray-500 text-sm mt-1">DzRetour — Tableau de bord</p>
+          </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
+          <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
+            <form onSubmit={(e) => { e.preventDefault(); if (password.trim()) fetchStats(password) }} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Mot de passe administrateur
                 </label>
                 <div className="relative">
@@ -192,21 +131,18 @@ export default function AdminPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 pr-12"
+                    placeholder="••••••••••"
+                    className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all pr-12"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
               </div>
 
               {error && (
-                <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm px-4 py-3 rounded-xl">
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                   {error}
                 </div>
               )}
@@ -214,9 +150,14 @@ export default function AdminPage() {
               <button
                 type="submit"
                 disabled={isLoading || !password.trim()}
-                className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                {isLoading ? "Connexion..." : "Se connecter"}
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Connexion...
+                  </span>
+                ) : "Se connecter"}
               </button>
             </form>
           </div>
@@ -225,151 +166,117 @@ export default function AdminPage() {
     )
   }
 
-  // --- DASHBOARD ---
   const mergedReasons = stats ? mergeReasons(stats.reasons) : []
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Tableau de bord</h1>
-            <p className="text-muted-foreground mt-1">Statistiques en temps réel — DzRetour</p>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top bar */}
+      <div className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <div className="p-1.5 bg-primary/10 rounded-lg">
+              <Activity className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <span className="font-bold text-gray-900">DzRetour Admin</span>
+              {lastUpdated && (
+                <span className="text-xs text-gray-400 ml-3">
+                  Mis à jour à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
             <button
               onClick={() => fetchStats(password, true)}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-card border border-border/50 rounded-xl text-sm font-medium hover:bg-card/80 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium text-gray-700 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              Actualiser
+              <span className="hidden sm:inline">Actualiser</span>
             </button>
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border border-destructive/30 text-destructive rounded-xl text-sm font-medium hover:bg-destructive/20 transition-colors"
+              onClick={() => { setIsAuthenticated(false); setStats(null); setPassword("") }}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors font-medium"
             >
               <LogOut className="h-4 w-4" />
-              Déconnexion
+              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
         </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {stats && (
           <>
-            {/* Overview cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <StatCard
-                icon={FileText}
-                label="Total signalements"
-                value={stats.overview.total}
-                color="bg-indigo-500"
-              />
-              <StatCard
-                icon={Clock}
-                label="Aujourd'hui"
-                value={stats.overview.today}
-                color="bg-violet-500"
-              />
-              <StatCard
-                icon={TrendingUp}
-                label="7 derniers jours"
-                value={stats.overview.week}
-                color="bg-purple-500"
-              />
-              <StatCard
-                icon={AlertTriangle}
-                label="30 derniers jours"
-                value={stats.overview.month}
-                color="bg-fuchsia-500"
-              />
+            {/* Overview */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <StatCard icon={FileText} label="Total signalements" value={stats.overview.total} color="bg-primary" />
+              <StatCard icon={Clock} label="Aujourd'hui" value={stats.overview.today} color="bg-amber-500" />
+              <StatCard icon={TrendingUp} label="7 derniers jours" value={stats.overview.week} color="bg-violet-500" />
+              <StatCard icon={Activity} label="30 derniers jours" value={stats.overview.month} color="bg-emerald-500" />
             </div>
 
             {/* Charts row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
 
-              {/* Daily bar chart */}
-              <div className="lg:col-span-2 bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-foreground mb-6">
-                  Signalements — 30 derniers jours
-                </h2>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={stats.dailyChart} barSize={14}>
-                    <XAxis
-                      dataKey="date"
-                      tickFormatter={formatDate}
-                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                      interval={4}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={30}
-                    />
+              {/* Area chart */}
+              <div className="lg:col-span-2 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-base font-bold text-gray-900">Activité — 30 derniers jours</h2>
+                  <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">
+                    {stats.overview.month} signalements
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={stats.dailyChart}>
+                    <defs>
+                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#dc2626" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 11, fill: "#9ca3af" }} interval={4} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={25} />
                     <Tooltip
                       labelFormatter={(v) => formatDate(v)}
                       formatter={(v: any) => [v, "Signalements"]}
-                      contentStyle={{
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "12px",
-                        fontSize: "13px",
-                      }}
+                      contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
                     />
-                    <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Area type="monotone" dataKey="count" stroke="#dc2626" strokeWidth={2} fill="url(#colorCount)" dot={false} activeDot={{ r: 4 }} />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Reasons pie chart */}
-              <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-foreground mb-4">
-                  Raisons
-                </h2>
+              {/* Pie chart */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-base font-bold text-gray-900 mb-4">Raisons</h2>
                 {mergedReasons.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie
-                        data={mergedReasons}
-                        dataKey="count"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={75}
-                        innerRadius={40}
-                      >
-                        {mergedReasons.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v: any) => [v, "signalements"]}
-                        contentStyle={{
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "12px",
-                          fontSize: "13px",
-                        }}
-                      />
-                      <Legend
-                        iconType="circle"
-                        iconSize={8}
-                        formatter={(v) => (
-                          <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                            {v}
+                  <>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <PieChart>
+                        <Pie data={mergedReasons} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={65} innerRadius={35}>
+                          {mergedReasons.map((_, i) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: any) => [v, "signalements"]} contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-1.5 mt-2">
+                      {mergedReasons.map((r, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 text-gray-600 truncate">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                            {r.name}
                           </span>
-                        )}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                          <span className="font-semibold text-gray-800 ml-2">{r.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <p className="text-muted-foreground text-sm text-center py-16">Aucune donnée</p>
+                  <p className="text-gray-400 text-sm text-center py-12">Aucune donnée</p>
                 )}
               </div>
             </div>
@@ -377,100 +284,74 @@ export default function AdminPage() {
             {/* Bottom row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-              {/* Top reported numbers */}
-              <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
+              {/* Top numbers */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-5">
-                  <Phone className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Numéros les plus signalés</h2>
+                  <Phone className="h-4 w-4 text-primary" />
+                  <h2 className="text-base font-bold text-gray-900">Numéros les plus signalés</h2>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {stats.topNumbers.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Aucune donnée</p>
-                  ) : (
-                    stats.topNumbers.map((item, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-bold text-muted-foreground w-5">
-                            {i + 1}
-                          </span>
-                          <span className="font-mono text-sm text-foreground">{item.phone}</span>
-                        </div>
-                        <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-lg">
-                          {item.count} signalement{item.count > 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                    <p className="text-gray-400 text-sm">Aucune donnée</p>
+                  ) : stats.topNumbers.map((item, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                      <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${i === 0 ? "bg-primary text-white" : i === 1 ? "bg-amber-100 text-amber-700" : i === 2 ? "bg-gray-100 text-gray-600" : "text-gray-400"}`}>
+                        {i + 1}
+                      </span>
+                      <span className="font-mono text-sm text-gray-700 flex-1">{item.phone}</span>
+                      <span className="text-xs font-semibold bg-red-50 text-primary px-2 py-1 rounded-lg whitespace-nowrap">
+                        {item.count}×
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {/* Countries */}
-              <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-5">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Pays des reporters</h2>
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <h2 className="text-base font-bold text-gray-900">Pays des reporters</h2>
                 </div>
                 <div className="space-y-3">
                   {stats.countries.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Aucune donnée géographique</p>
-                  ) : (
-                    stats.countries.map((item, i) => {
-                      const max = stats.countries[0]?.count || 1
-                      const pct = Math.round((item.count / max) * 100)
-                      return (
-                        <div key={i}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm text-foreground font-medium">
-                              {item.country || "Inconnu"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">{item.count}</span>
-                          </div>
-                          <div className="h-1.5 bg-border/50 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary rounded-full transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
+                    <p className="text-gray-400 text-sm">Aucune donnée géographique</p>
+                  ) : stats.countries.map((item, i) => {
+                    const pct = Math.round((item.count / (stats.countries[0]?.count || 1)) * 100)
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-gray-700 font-medium">{item.country || "Inconnu"}</span>
+                          <span className="text-xs text-gray-500">{item.count}</span>
                         </div>
-                      )
-                    })
-                  )}
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Recent reports */}
-              <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
+              {/* Recent */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-5">
-                  <Clock className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Signalements récents</h2>
+                  <Clock className="h-4 w-4 text-primary" />
+                  <h2 className="text-base font-bold text-gray-900">Signalements récents</h2>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {stats.recentReports.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Aucun signalement</p>
-                  ) : (
-                    stats.recentReports.map((r, i) => (
-                      <div
-                        key={i}
-                        className="border border-border/40 rounded-xl p-3 space-y-1"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-sm font-semibold text-foreground">
-                            {r.phone}
-                          </span>
-                          {r.country && (
-                            <span className="text-xs text-muted-foreground">{r.country}</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {REASON_LABELS[r.reason] || r.reason}
-                          {r.customReason && ` — ${r.customReason}`}
-                        </p>
-                        <p className="text-xs text-muted-foreground/60">
-                          {formatDateTime(r.createdAt)}
-                        </p>
+                    <p className="text-gray-400 text-sm">Aucun signalement</p>
+                  ) : stats.recentReports.map((r, i) => (
+                    <div key={i} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-sm font-semibold text-gray-800">{r.phone}</span>
+                        {r.country && <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{r.country}</span>}
                       </div>
-                    ))
-                  )}
+                      <p className="text-xs text-gray-500 mb-1 truncate">{REASON_LABELS[r.reason] || r.reason}</p>
+                      <p className="text-xs text-gray-400">{formatDateTime(r.createdAt)}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

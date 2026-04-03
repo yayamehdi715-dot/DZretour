@@ -1,96 +1,88 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useLanguage } from "@/contexts/LanguageContext"
-import Logo from "./Logo"
-import { Instagram } from "lucide-react"
+import { Instagram, Shield } from "lucide-react"
 
 export default function Footer() {
   const { t, language } = useLanguage()
+  const isRtl = language === "ar"
 
   return (
-    <footer
-      className="bg-gray-50 border-t border-gray-200"
-      dir={language === "ar" ? "rtl" : "ltr"}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div
-          className={`grid grid-cols-1 md:grid-cols-3 gap-8 ${
-            language === "ar" ? "text-right" : "text-left"
-          }`}
-        >
-          {/* Logo + Description */}
+    <footer className="bg-gray-900 text-white" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        {/* Top section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 py-14 border-b border-white/10">
+
+          {/* Brand */}
           <div>
-            <div
-              className={`flex items-center mb-4 ${
-                language === "ar" ? "space-x-reverse space-x-2" : "space-x-2"
-              }`}
-            >
-              <Logo className="h-8 w-8" />
-              <span className="text-xl font-bold text-dark">DzRetour</span>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-primary/10 p-2 rounded-xl">
+                <Shield className="h-6 w-6 text-primary" />
+              </div>
+              <span className="text-xl font-bold">DzRetour</span>
             </div>
-            <p className="text-gray-600 text-sm leading-relaxed">
+            <p className="text-gray-400 text-sm leading-relaxed max-w-xs">
               {t("footer.description")}
             </p>
           </div>
 
           {/* Links */}
           <div>
-            <h3 className="font-semibold text-dark mb-4">
+            <h3 className="font-semibold text-white mb-5 text-sm uppercase tracking-widest">
               {t("footer.links")}
             </h3>
-            <ul className="space-y-2">
-              <li>
-                <Link
-                  href="/terms"
-                  className="text-gray-600 hover:text-primary transition-colors text-sm"
-                >
-                  {t("nav.terms")}
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/privacy"
-                  className="text-gray-600 hover:text-primary transition-colors text-sm"
-                >
-                  {t("nav.privacy")}
-                </Link>
-              </li>
+            <ul className="space-y-3">
+              {[
+                { label: t("nav.home"), href: "/" },
+                { label: t("nav.report"), href: "/report" },
+                { label: t("nav.check"), href: "/check" },
+                { label: t("nav.terms"), href: "/terms" },
+                { label: t("nav.privacy"), href: "/privacy" },
+              ].map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-gray-400 hover:text-white transition-colors text-sm"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
           {/* Contact */}
           <div>
-            <h3 className="font-semibold text-dark mb-4">
+            <h3 className="font-semibold text-white mb-5 text-sm uppercase tracking-widest">
               {t("footer.contact")}
             </h3>
-            <Link
+            <a
               href="https://www.instagram.com/dz.retour/"
               target="_blank"
-              className="flex items-center  gap-1 text-gray-600 hover:text-primary transition-colors text-sm"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm group"
             >
-              {language === "ar" ? (
-                <>
-                
-                  <span>Instagram</span>
-                  <Instagram className="w-5 relative top-[1px] h-5" />
-                </>
-              ) : (
-                <>
-                
-                  <Instagram className="w-5 relative top-[1px] h-5" />
-                  <span>Instagram</span>
-                </>
-              )}
-            </Link>
+              <Instagram className="h-5 w-5 group-hover:text-pink-400 transition-colors" />
+              @dz.retour
+            </a>
+            <p className="text-gray-500 text-xs mt-6 leading-relaxed">
+              {isRtl
+                ? "منصة مجتمعية لحماية التجار في الجزائر"
+                : "Plateforme communautaire pour protéger les marchands algériens"}
+            </p>
           </div>
         </div>
 
         {/* Bottom */}
-        <div className="border-t border-gray-200 mt-8 pt-8 text-center">
-          <p className="text-gray-500 text-sm">
-            © 2025 DzRetour. {t("footer.rights")}.
-          </p>
+        <div className="py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-gray-500 text-sm">
+          <p>© 2025 DzRetour. {t("footer.rights")}.</p>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            {isRtl ? "الخدمة تعمل بشكل طبيعي" : "Service opérationnel"}
+          </div>
         </div>
       </div>
     </footer>

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const recentReports = reports.filter(
       r => now - new Date(r.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000
     )
-    const reasonTypes = [...new Set(reports.map(r => r.reason as string))].slice(0, 3)
+    const reasonTypes = Array.from(new Set(reports.map(r => r.reason as string))).slice(0, 3)
 
     return NextResponse.json({
       isReported: effectiveCount > 0,

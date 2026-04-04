@@ -18,10 +18,10 @@ export default function Header() {
     { href: "/check", label: t("nav.check") },
   ]
 
-  const langs: { code: "ar" | "en" | "fr"; label: string }[] = [
-    { code: "ar", label: "ع" },
-    { code: "fr", label: "FR" },
-    { code: "en", label: "EN" },
+  const langs: { code: "ar" | "en" | "fr"; label: string; ariaLabel: string }[] = [
+    { code: "ar", label: "ع", ariaLabel: "Langue arabe" },
+    { code: "fr", label: "FR", ariaLabel: "Langue française" },
+    { code: "en", label: "EN", ariaLabel: "English language" },
   ]
 
   return (
@@ -36,7 +36,7 @@ export default function Header() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1" aria-label="Navigation principale">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -44,6 +44,7 @@ export default function Header() {
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   pathname === link.href ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-gray-100"
                 }`}
+                aria-current={pathname === link.href ? "page" : undefined}
               >
                 {link.label}
               </Link>
@@ -52,11 +53,14 @@ export default function Header() {
 
           {/* Right side */}
           <div className="hidden md:flex items-center gap-3">
-            <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
-              {langs.map(({ code, label }) => (
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5" role="group" aria-label="Sélection de la langue">
+              {langs.map(({ code, label, ariaLabel }) => (
                 <button
                   key={code}
+                  type="button"
                   onClick={() => setLanguage(code)}
+                  aria-label={ariaLabel}
+                  aria-pressed={language === code}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                     language === code ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -66,27 +70,35 @@ export default function Header() {
               ))}
             </div>
             <Link href="/check" className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-primary/90 transition-colors shadow-sm">
-              <Search className="h-4 w-4" />
+              <Search className="h-4 w-4" aria-hidden="true" />
               {t("nav.check")}
             </Link>
           </div>
 
           {/* Mobile menu button */}
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors">
-            {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-menu"
+            aria-label={isMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {isMenuOpen ? <X className="h-6 w-6" aria-hidden="true" /> : <Menu className="h-6 w-6" aria-hidden="true" />}
           </button>
         </div>
       </div>
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t border-gray-100 bg-white">
-          <div className="px-4 py-4 space-y-1">
+        <div id="mobile-menu" className="md:hidden border-t border-gray-100 bg-white">
+          <nav className="px-4 py-4 space-y-1" aria-label="Navigation mobile">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMenuOpen(false)}
+                aria-current={pathname === link.href ? "page" : undefined}
                 className={`block px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                   pathname === link.href ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-gray-50"
                 }`}
@@ -95,11 +107,14 @@ export default function Header() {
               </Link>
             ))}
             <div className="pt-3 border-t border-gray-100 space-y-3">
-              <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
-                {langs.map(({ code, label }) => (
+              <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5" role="group" aria-label="Sélection de la langue">
+                {langs.map(({ code, label, ariaLabel }) => (
                   <button
                     key={code}
+                    type="button"
                     onClick={() => { setLanguage(code); setIsMenuOpen(false) }}
+                    aria-label={ariaLabel}
+                    aria-pressed={language === code}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       language === code ? "bg-white text-foreground shadow-sm" : "text-muted-foreground"
                     }`}
@@ -108,12 +123,16 @@ export default function Header() {
                   </button>
                 ))}
               </div>
-              <Link href="/check" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-3 rounded-xl w-full">
-                <Search className="h-4 w-4" />
+              <Link
+                href="/check"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center justify-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-3 rounded-xl w-full"
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
                 {t("nav.check")}
               </Link>
             </div>
-          </div>
+          </nav>
         </div>
       )}
     </header>

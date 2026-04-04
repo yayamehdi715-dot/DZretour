@@ -8,13 +8,26 @@ export const runtime = "nodejs"
 
 const reportLimit = createRateLimiter()
 
+// Toutes les raisons valides — anciennes + nouvelles labels publiques
 const VALID_REASONS = new Set([
-  "Product dissatisfaction", "Refused to open package",
-  "Package damaged during delivery", "Customer changed mind", "Other",
+  // Nouvelles raisons publiques (FR)
+  "Insatisfaction client",
+  "Changement d'avis client",
+  "Sans raison valable",
+  "Autre",
+  // Anciennes raisons FR (compatibilité signalements existants)
+  "Insatisfaction produit",
+  "Refus d'ouvrir le colis",
+  "Colis endommagé à la livraison",
+  "Changement d'avis du client",
+  // Raisons AR
   "عدم الرضا عن المنتج", "رفض فتح الطرد",
   "تلف الطرد أثناء التوصيل", "تغيير رأي العميل", "أخرى",
-  "Insatisfaction produit", "Refus d'ouvrir le colis",
-  "Colis endommagé à la livraison", "Changement d'avis du client", "Autre",
+  "عدم رضا العميل", "تغيير رأي العميل", "بدون سبب وجيه",
+  // Raisons EN
+  "Product dissatisfaction", "Refused to open package",
+  "Package damaged during delivery", "Customer changed mind", "Other",
+  "Customer dissatisfaction", "No valid reason",
 ])
 
 async function getLocationFromIP(ip: string): Promise<{ country?: string; city?: string; timezone?: string }> {
@@ -32,11 +45,7 @@ async function getLocationFromIP(ip: string): Promise<{ country?: string; city?:
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     if (data.error) return {}
-    return {
-      country:  data.country_code ?? null,
-      city:     data.city         ?? null,
-      timezone: data.timezone     ?? null,
-    }
+    return { country: data.country_code ?? null, city: data.city ?? null, timezone: data.timezone ?? null }
   } catch {
     return {}
   }
@@ -49,7 +58,6 @@ export async function POST(request: NextRequest) {
     const ip = (forwardedFor?.split(",")[0] ?? realIp ?? "unknown").trim()
     const userAgent = request.headers.get("user-agent") ?? null
 
-    // Rate limit global : 3 signalements / heure / IP (protège contre le spam)
     const rl = reportLimit(ip, 60 * 60 * 1000, 3)
     if (!rl.allowed) {
       return NextResponse.json(
@@ -62,8 +70,8 @@ export async function POST(request: NextRequest) {
     try { body = await request.json() }
     catch { return NextResponse.json({ error: "JSON invalide", code: "INVALID_JSON" }, { status: 400 }) }
 
-    if (typeof body.phone !== "string" || typeof body.reason !== "string") {
-      return NextResponse.json({ error: "Numéro et raison requis", code: "MISSING_FIELDS" }, { status: 400 })
+    if (typeof body.phone !== "string") {
+      return NextResponse.json({ error: "Numéro requis", code: "MISSING_FIELDS" }, { status: 400 })
     }
 
     const cleanPhone = normalizePhone(body.phone)
@@ -71,8 +79,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Format de numéro algérien invalide", code: "INVALID_PHONE" }, { status: 400 })
     }
 
-    const reason = body.reason.trim()
-    if (!VALID_REASONS.has(reason)) {
+    // La raison est optionnelle — on met "Non spécifiée" si absent
+    const reason = typeof body.reason === "string" && body.reason.trim()
+      ? body.reason.trim()
+      : "Non spécifiée"
+
+    if (reason !== "Non spécifiée" && !VALID_REASONS.has(reason)) {
       return NextResponse.json({ error: "Raison invalide", code: "INVALID_REASON" }, { status: 400 })
     }
 
@@ -84,30 +96,19 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
     const col = db.collection("reports")
 
-    // Anti-doublon : même IP + même numéro dans les 3 JOURS
-    // (différentes IPs peuvent signaler le même numéro librement)
+    // Anti-doublon : même IP + même numéro dans les 3 jours
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const recentByThisIP = await col.findOne(
-      {
-        phoneNumber: cleanPhone,
-        reporterIp: ip !== "unknown" ? ip : "__never__",
-        createdAt: { $gte: threeDaysAgo },
-      },
+      { phoneNumber: cleanPhone, reporterIp: ip !== "unknown" ? ip : "__never__", createdAt: { $gte: threeDaysAgo } },
       { projection: { createdAt: 1, _id: 0 } }
     )
-
     if (recentByThisIP) {
       return NextResponse.json(
-        {
-          error: "Vous avez déjà signalé ce numéro récemment. Réessayez dans 3 jours.",
-          code: "DUPLICATE_REPORT",
-          lastReported: recentByThisIP.createdAt,
-        },
+        { error: "Vous avez déjà signalé ce numéro récemment. Réessayez dans 3 jours.", code: "DUPLICATE_REPORT", lastReported: recentByThisIP.createdAt },
         { status: 409 }
       )
     }
 
-    // Insert immédiat pour ne pas bloquer la réponse
     const now = new Date()
     const result = await col.insertOne({
       phoneNumber: cleanPhone,
@@ -122,7 +123,6 @@ export async function POST(request: NextRequest) {
       updatedAt: now,
     })
 
-    // Géoloc et stats en arrière-plan (ne bloquent pas la réponse)
     getLocationFromIP(ip).then(loc => {
       if (loc.country) {
         col.updateOne(

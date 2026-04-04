@@ -1,9 +1,9 @@
+// 📁 EMPLACEMENT : components/Footer.tsx  (remplace l'existant)
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { Instagram, Shield } from "lucide-react"
+import { Shield, Instagram } from "lucide-react"
 
 export default function Footer() {
   const { t, language } = useLanguage()
@@ -36,17 +36,14 @@ export default function Footer() {
             </h3>
             <ul className="space-y-3">
               {[
-                { label: t("nav.home"), href: "/" },
-                { label: t("nav.report"), href: "/report" },
-                { label: t("nav.check"), href: "/check" },
-                { label: t("nav.terms"), href: "/terms" },
+                { label: t("nav.home"),    href: "/" },
+                { label: t("nav.report"),  href: "/report" },
+                { label: t("nav.check"),   href: "/check" },
+                { label: t("nav.terms"),   href: "/terms" },
                 { label: t("nav.privacy"), href: "/privacy" },
-              ].map((link) => (
+              ].map(link => (
                 <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-gray-400 hover:text-white transition-colors text-sm"
-                  >
+                  <Link href={link.href} className="text-gray-400 hover:text-white transition-colors text-sm">
                     {link.label}
                   </Link>
                 </li>
@@ -60,13 +57,13 @@ export default function Footer() {
               {t("footer.contact")}
             </h3>
             <a
-              href="https://www.instagram.com/dz.retour/"
+              href="https://www.instagram.com/cvkdev/"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm group"
             >
               <Instagram className="h-5 w-5 group-hover:text-pink-400 transition-colors" />
-              @dz.retour
+              @cvkdev
             </a>
             <p className="text-gray-500 text-xs mt-6 leading-relaxed">
               {isRtl
@@ -80,7 +77,7 @@ export default function Footer() {
         <div className="py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-gray-500 text-sm">
           <p>© 2025 DzRetour. {t("footer.rights")}.</p>
           <div className="flex items-center gap-1 text-xs">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" aria-hidden="true" />
             {isRtl ? "الخدمة تعمل بشكل طبيعي" : "Service opérationnel"}
           </div>
         </div>

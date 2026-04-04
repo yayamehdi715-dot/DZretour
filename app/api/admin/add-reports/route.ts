@@ -22,10 +22,10 @@ function verifyAdmin(username?: string, password?: string): boolean {
 
 function normalizePhone(phone: string): string {
   let cleaned = phone.trim().replace(/[\s\-\(\)\.]/g, "")
-  if (cleaned.startsWith("+213"))                           cleaned = "0" + cleaned.substring(4)
-  else if (cleaned.startsWith("00213"))                    cleaned = "0" + cleaned.substring(5)
+  if (cleaned.startsWith("+213"))                              cleaned = "0" + cleaned.substring(4)
+  else if (cleaned.startsWith("00213"))                       cleaned = "0" + cleaned.substring(5)
   else if (cleaned.startsWith("213") && cleaned.length === 12) cleaned = "0" + cleaned.substring(3)
-  else if (/^[567]\d{8}$/.test(cleaned))                   cleaned = "0" + cleaned
+  else if (/^[567]\d{8}$/.test(cleaned))                      cleaned = "0" + cleaned
   return cleaned
 }
 
@@ -38,12 +38,19 @@ function sanitize(str: string, max: number): string {
 }
 
 const VALID_REASONS = [
-  "Product dissatisfaction", "Refused to open package",
-  "Package damaged during delivery", "Customer changed mind", "Other",
+  // Nouvelles raisons publiques
+  "Insatisfaction client", "Changement d'avis client", "Sans raison valable", "Autre",
+  // Anciennes raisons FR
+  "Insatisfaction produit", "Refus d'ouvrir le colis",
+  "Colis endommagé à la livraison", "Changement d'avis du client",
+  // AR
   "عدم الرضا عن المنتج", "رفض فتح الطرد",
   "تلف الطرد أثناء التوصيل", "تغيير رأي العميل", "أخرى",
-  "Insatisfaction produit", "Refus d'ouvrir le colis",
-  "Colis endommagé à la livraison", "Changement d'avis du client", "Autre",
+  // EN
+  "Product dissatisfaction", "Refused to open package",
+  "Package damaged during delivery", "Customer changed mind", "Other",
+  // Admin
+  "Non spécifiée",
 ]
 
 export async function POST(request: NextRequest) {
@@ -63,12 +70,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Identifiants incorrects", code: "INVALID_CREDENTIALS" }, { status: 401 })
   }
 
-  if (typeof body.phones !== "string" || typeof body.reason !== "string") {
-    return NextResponse.json({ error: "Numéros et raison requis", code: "MISSING_FIELDS" }, { status: 400 })
+  if (typeof body.phones !== "string") {
+    return NextResponse.json({ error: "Numéros requis", code: "MISSING_FIELDS" }, { status: 400 })
   }
 
-  const reason = body.reason.trim()
-  if (!VALID_REASONS.includes(reason)) {
+  // La raison est optionnelle pour l'admin
+  const reason = typeof body.reason === "string" && body.reason.trim()
+    ? body.reason.trim()
+    : "Non spécifiée"
+
+  if (reason !== "Non spécifiée" && !VALID_REASONS.includes(reason)) {
     return NextResponse.json({ error: "Raison invalide", code: "INVALID_REASON" }, { status: 400 })
   }
 
@@ -84,7 +95,7 @@ export async function POST(request: NextRequest) {
   try {
     const { getDb } = await import("@/lib/mongodb")
     db = await getDb()
-  } catch (err: any) {
+  } catch {
     return NextResponse.json({ error: "Connexion DB échouée", code: "DB_ERROR" }, { status: 500 })
   }
 
@@ -92,7 +103,6 @@ export async function POST(request: NextRequest) {
   const now = new Date()
   const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
 
-  // Normalisation + validation
   const normalized = rawPhones.map(function(raw: string) {
     const phone = normalizePhone(raw)
     return { raw, phone, valid: isValidPhone(phone) }
@@ -110,7 +120,6 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Vérification doublons en une requête
   const recentlyReported: string[] = await col.distinct("phoneNumber", {
     phoneNumber: { $in: validPhones },
     reporterUserAgent: "admin-manual",
@@ -129,26 +138,18 @@ export async function POST(request: NextRequest) {
   if (toInsert.length > 0) {
     const docs = toInsert.map(function(phone: string) {
       return {
-        phoneNumber: phone,
-        reason,
-        customReason,
-        reporterIp: null,
-        reporterUserAgent: "admin-manual",
-        reporterCountry: null,
-        reporterCity: null,
-        reporterTimezone: null,
-        createdAt: now,
-        updatedAt: now,
+        phoneNumber: phone, reason, customReason,
+        reporterIp: null, reporterUserAgent: "admin-manual",
+        reporterCountry: null, reporterCity: null, reporterTimezone: null,
+        createdAt: now, updatedAt: now,
       }
     })
-
     try {
       await col.insertMany(docs, { ordered: false })
       addedCount = toInsert.length
       toInsert.forEach(function(p: string) { addedResults.push({ phone: p, status: "added" }) })
     } catch (err: any) {
       addedCount = err?.result?.insertedCount ?? 0
-      console.error("[admin/add-reports] insertMany:", err?.message)
     }
   }
 
@@ -161,12 +162,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    summary: {
-      total:     rawPhones.length,
-      added:     addedResults.length,
-      invalid:   invalidResults.length,
-      duplicate: duplicateResults.length,
-    },
+    summary: { total: rawPhones.length, added: addedResults.length, invalid: invalidResults.length, duplicate: duplicateResults.length },
     results: invalidResults.concat(duplicateResults).concat(addedResults),
   })
 }

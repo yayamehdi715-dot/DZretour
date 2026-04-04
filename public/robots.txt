@@ -1,4 +1,14 @@
+# 📁 EMPLACEMENT : public/robots.txt  (remplace l'existant)
+
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Allow: /api/sitemap
 
-Sitemap: https://dzretour.com/sitemap.xml
+# Sitemap principal (généré par Next.js)
+Sitemap: https://dzretours.vercel.app/sitemap.xml
+
+# Crawl-delay pour les petits crawlers
+Crawl-delay: 1

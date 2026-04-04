@@ -55,16 +55,13 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText()
-      const formatted = formatAlgerianNumber(text.trim())
-      onChange(formatted)
-      setCopied(true)
-      setShowPasteButton(false)
+      onChange(formatAlgerianNumber(text.trim()))
+      setCopied(true); setShowPasteButton(false)
       setTimeout(() => setCopied(false), 2000)
     } catch {}
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Toujours appeler onChange — formatAlgerianNumber limite déjà à 10 chiffres purs
     onChange(formatAlgerianNumber(e.target.value))
   }
 
@@ -79,7 +76,6 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
           inputMode="numeric"
           value={value}
           onChange={handleInputChange}
-          // ⚠️ PAS de onKeyDown — e.keyCode est déprécié et bloque les claviers AZERTY/mobile
           placeholder={language === "ar" ? "0xxxxxxxxx (10 أرقام)" : "0xxxxxxxxx (10 chiffres)"}
           maxLength={MAX_ALGERIAN_DIGITS}
           autoComplete="tel"
@@ -89,13 +85,8 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
           dir="ltr"
         />
         {showPasteButton && (
-          <button
-            type="button"
-            onClick={handlePaste}
-            aria-label={pasteLabel}
-            title={pasteLabel}
-            className={`absolute top-1/2 -translate-y-1/2 ${language === "ar" ? "left-3" : "right-3"} p-2 rounded-lg bg-primary text-white hover:bg-primary/90 w-10 h-10 flex items-center justify-center`}
-          >
+          <button type="button" onClick={handlePaste} aria-label={pasteLabel} title={pasteLabel}
+            className={`absolute top-1/2 -translate-y-1/2 ${language === "ar" ? "left-3" : "right-3"} p-2 rounded-lg bg-primary text-white hover:bg-primary/90 w-10 h-10 flex items-center justify-center`}>
             {copied ? <Check className="w-4 h-4" aria-hidden="true" /> : <Clipboard className="w-4 h-4" aria-hidden="true" />}
           </button>
         )}
@@ -132,53 +123,43 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
 function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
   phone: string; reason: string; onConfirm: () => void; onCancel: () => void; language: string
 }) {
-  const isFr = language === "fr"
-  const isAr = language === "ar"
-
+  const isFr = language === "fr"; const isAr = language === "ar"
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel() }
-    document.addEventListener("keydown", handleKey)
-    return () => document.removeEventListener("keydown", handleKey)
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel() }
+    document.addEventListener("keydown", h)
+    return () => document.removeEventListener("keydown", h)
   }, [onCancel])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} aria-hidden="true" />
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100">
-        <button type="button" onClick={onCancel} aria-label="Fermer" className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+        <button type="button" onClick={onCancel} aria-label="Fermer" className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
           <X className="h-5 w-5 text-gray-400" aria-hidden="true" />
         </button>
-
         <div className="flex justify-center mb-5">
           <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center" aria-hidden="true">
             <AlertTriangle className="h-8 w-8 text-primary" />
           </div>
         </div>
-
         <h2 id="confirm-title" className="text-xl font-bold text-gray-900 text-center mb-2">
           {isAr ? "تأكيد الإبلاغ" : isFr ? "Confirmer le signalement" : "Confirm Report"}
         </h2>
         <p className="text-gray-500 text-sm text-center mb-6 leading-relaxed">
-          {isAr
-            ? "هل أنت متأكد من رغبتك في الإبلاغ عن هذا الرقم؟"
-            : isFr
-            ? "Êtes-vous sûr de vouloir signaler ce numéro ?"
-            : "Are you sure you want to report this number?"}
+          {isAr ? "هل أنت متأكد من رغبتك في الإبلاغ عن هذا الرقم؟" : isFr ? "Êtes-vous sûr de vouloir signaler ce numéro ?" : "Are you sure you want to report this number?"}
         </p>
-
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-400">{isAr ? "الرقم" : isFr ? "Numéro" : "Number"}</span>
             <span className="font-mono font-bold text-gray-900">{phone}</span>
           </div>
-          {reason && (
+          {reason && reason !== "Non spécifiée" && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">{isAr ? "السبب" : isFr ? "Raison" : "Reason"}</span>
               <span className="text-sm text-gray-700">{reason}</span>
             </div>
           )}
         </div>
-
         <div className="flex gap-3">
           <button type="button" onClick={onCancel} className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-colors">
             {isAr ? "إلغاء" : isFr ? "Annuler" : "Cancel"}
@@ -207,13 +188,13 @@ export default function ReportPage() {
   const [showConfirm, setShowConfirm] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  // Nouvelles raisons publiques simplifiées
   const reasonsByLang: Record<string, string[]> = {
-    ar: ["عدم الرضا عن المنتج", "رفض فتح الطرد", "تلف الطرد أثناء التوصيل", "تغيير رأي العميل", "أخرى"],
-    fr: ["Insatisfaction produit", "Refus d'ouvrir le colis", "Colis endommagé à la livraison", "Changement d'avis du client", "Autre"],
-    en: ["Product dissatisfaction", "Refused to open package", "Package damaged during delivery", "Customer changed mind", "Other"],
+    ar: ["عدم رضا العميل", "تغيير رأي العميل", "بدون سبب وجيه", "أخرى"],
+    fr: ["Insatisfaction client", "Changement d'avis client", "Sans raison valable", "Autre"],
+    en: ["Customer dissatisfaction", "Customer changed mind", "No valid reason", "Other"],
   }
   const reasons = reasonsByLang[language] ?? reasonsByLang.fr
-  const otherLabel = ({ ar: "أخرى", fr: "Autre", en: "Other" } as Record<string, string>)[language] ?? "Autre"
 
   useEffect(() => { setReason(""); setCustomReason(""); setIsDropdownOpen(false) }, [language])
 
@@ -231,7 +212,7 @@ export default function ReportPage() {
 
   const handleSubmitClick = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isValid || !phone || !agreedToTerms || !reason) return
+    if (!isValid || !phone || !agreedToTerms) return
     setShowConfirm(true)
   }
 
@@ -240,8 +221,10 @@ export default function ReportPage() {
     setIsLoading(true)
     setMessage("")
 
-    const requestBody: Record<string, string> = { phone: phone.replace(/\s/g, ""), reason }
-    if (reason === otherLabel && customReason.trim()) requestBody.customReason = customReason.trim()
+    const requestBody: Record<string, string> = { phone: phone.replace(/\s/g, "") }
+    // Raison et description sont optionnelles
+    if (reason) requestBody.reason = reason
+    if (customReason.trim()) requestBody.customReason = customReason.trim()
 
     try {
       const response = await fetch("/api/report", {
@@ -256,17 +239,14 @@ export default function ReportPage() {
         setMessageType("success")
         setPhone(""); setReason(""); setCustomReason("")
         setAgreedToTerms(false); setIsValid(false)
-
-        // Notifie HeroSection de rafraîchir les stats
         window.dispatchEvent(new Event("dzretour:stats-updated"))
       } else {
         const msgs: Record<string, string> = {
           DUPLICATE_REPORT: language === "ar"
             ? "لقد أبلغت بالفعل عن هذا الرقم. يمكنك إعادة الإبلاغ بعد 3 أيام."
             : "Vous avez déjà signalé ce numéro. Réessayez dans 3 jours.",
-          RATE_LIMITED:   language === "ar" ? "تجاوزت الحد. حاول لاحقاً" : "Limite dépassée. Réessayez plus tard",
-          INVALID_PHONE:  language === "ar" ? "تنسيق رقم غير صحيح" : "Format de numéro invalide",
-          INVALID_REASON: language === "ar" ? "السبب غير صحيح" : "Raison invalide",
+          RATE_LIMITED:  language === "ar" ? "تجاوزت الحد. حاول لاحقاً" : "Limite dépassée. Réessayez plus tard",
+          INVALID_PHONE: language === "ar" ? "تنسيق رقم غير صحيح" : "Format de numéro invalide",
         }
         setMessage(msgs[data.code] || data.error || t("report.error"))
         setMessageType("error")
@@ -279,19 +259,13 @@ export default function ReportPage() {
     }
   }
 
-  const isOtherSelected = reason === otherLabel
-  const canSubmit = isValid && !!phone && agreedToTerms && !!reason && !(isOtherSelected && !customReason.trim())
+  // Raison et description sont optionnelles — seul le numéro + terms sont requis
+  const canSubmit = isValid && !!phone && agreedToTerms
 
   return (
     <>
       {showConfirm && (
-        <ConfirmModal
-          phone={phone}
-          reason={reason}
-          onConfirm={handleConfirmedSubmit}
-          onCancel={() => setShowConfirm(false)}
-          language={language}
-        />
+        <ConfirmModal phone={phone} reason={reason} onConfirm={handleConfirmedSubmit} onCancel={() => setShowConfirm(false)} language={language} />
       )}
 
       <div className="min-h-screen bg-gradient-to-br mt-12 from-slate-50 to-slate-100 pt-20 pb-8">
@@ -313,10 +287,13 @@ export default function ReportPage() {
                 </div>
               </div>
 
-              {/* Reason dropdown */}
+              {/* Reason - OPTIONNEL */}
               <div className="space-y-2">
                 <label id="reason-label" className={`block text-sm font-medium text-slate-700 mb-2 ${language === "ar" ? "text-right" : "text-left"}`}>
                   {t("report.reason.label")}
+                  <span className="text-slate-400 text-xs ml-1">
+                    {language === "ar" ? "(اختياري)" : language === "fr" ? "(optionnel)" : "(optional)"}
+                  </span>
                 </label>
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -327,7 +304,7 @@ export default function ReportPage() {
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                     className={`w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-white flex items-center justify-between hover:border-slate-300 focus:outline-none ${language === "ar" ? "text-right" : "text-left"}`}
                   >
-                    <span className={reason ? "text-slate-900" : "text-slate-500"}>
+                    <span className={reason ? "text-slate-900" : "text-slate-400"}>
                       {reason || t("report.reason.placeholder")}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -352,38 +329,31 @@ export default function ReportPage() {
                   )}
                 </div>
 
-                {isOtherSelected && (
-                  <div className="mt-3">
-                    <label htmlFor="custom-reason" className="sr-only">
-                      {language === "ar" ? "سبب آخر" : "Autre raison"}
-                    </label>
-                    <textarea
-                      id="custom-reason"
-                      value={customReason}
-                      onChange={e => setCustomReason(e.target.value)}
-                      placeholder={language === "ar" ? "اكتب السبب..." : "Écrivez la raison..."}
-                      className={`w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white resize-none ${language === "ar" ? "text-right" : "text-left"}`}
-                      rows={3}
-                      maxLength={200}
-                      dir={language === "ar" ? "rtl" : "ltr"}
-                    />
-                    <p className={`text-xs text-slate-500 mt-1 ${language === "ar" ? "text-right" : "text-left"}`} aria-live="polite">
-                      {customReason.length}/200
-                    </p>
-                  </div>
-                )}
+                {/* Description - OPTIONNELLE (pas de condition sur "Autre") */}
+                <div className="mt-3">
+                  <label htmlFor="custom-reason" className={`block text-xs text-slate-500 mb-1.5 ${language === "ar" ? "text-right" : "text-left"}`}>
+                    {language === "ar" ? "تفاصيل إضافية (اختياري)" : language === "fr" ? "Description supplémentaire (optionnel)" : "Additional details (optional)"}
+                  </label>
+                  <textarea
+                    id="custom-reason"
+                    value={customReason}
+                    onChange={e => setCustomReason(e.target.value)}
+                    placeholder={language === "ar" ? "أضف تفاصيل إن وجدت..." : language === "fr" ? "Ajoutez des détails si nécessaire..." : "Add details if needed..."}
+                    className={`w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white resize-none text-sm ${language === "ar" ? "text-right" : "text-left"}`}
+                    rows={2}
+                    maxLength={200}
+                    dir={language === "ar" ? "rtl" : "ltr"}
+                  />
+                  <p className={`text-xs text-slate-400 mt-1 ${language === "ar" ? "text-right" : "text-left"}`} aria-live="polite">
+                    {customReason.length}/200
+                  </p>
+                </div>
               </div>
 
               {/* Terms */}
               <div className="flex items-start gap-3 p-4 bg-slate-50/50 rounded-xl border border-slate-200/50">
-                <input
-                  type="checkbox"
-                  id="terms-agreement"
-                  checked={agreedToTerms}
-                  onChange={e => setAgreedToTerms(e.target.checked)}
-                  className="w-5 h-5 mt-0.5 rounded accent-primary cursor-pointer flex-shrink-0"
-                  aria-required="true"
-                />
+                <input type="checkbox" id="terms-agreement" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)}
+                  className="w-5 h-5 mt-0.5 rounded accent-primary cursor-pointer flex-shrink-0" aria-required="true" />
                 <label htmlFor="terms-agreement" className={`text-sm text-slate-700 leading-relaxed cursor-pointer ${language === "ar" ? "text-right" : "text-left"}`}>
                   {language === "ar" ? (
                     <>أوافق على{" "}<Link href="/terms" className="text-primary hover:text-primary/80 font-medium underline">شروط الاستخدام</Link>{" "}و{" "}<Link href="/privacy" className="text-primary hover:text-primary/80 font-medium underline">سياسة الخصوصية</Link></>
@@ -402,18 +372,13 @@ export default function ReportPage() {
                 aria-disabled={!canSubmit || isLoading ? "true" : "false"}
                 className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-3 min-h-[48px]"
               >
-                {isLoading ? (
-                  <><div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white" aria-hidden="true" />{t("loading")}</>
-                ) : (
-                  <><Shield className="w-5 h-5" aria-hidden="true" />{t("report.submit")}</>
-                )}
+                {isLoading
+                  ? <><div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white" aria-hidden="true" />{t("loading")}</>
+                  : <><Shield className="w-5 h-5" aria-hidden="true" />{t("report.submit")}</>}
               </button>
 
               {message && (
-                <div
-                  role="alert"
-                  className={`p-4 rounded-xl border flex items-center gap-3 ${messageType === "success" ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`}
-                >
+                <div role="alert" className={`p-4 rounded-xl border flex items-center gap-3 ${messageType === "success" ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`}>
                   {messageType === "success"
                     ? <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" aria-hidden="true" />
                     : <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" aria-hidden="true" />}
@@ -425,12 +390,8 @@ export default function ReportPage() {
 
           <div className="mt-8 text-center">
             <div className="flex items-center justify-center gap-6 text-xs text-slate-500">
-              <span className="flex items-center gap-1">
-                <Shield className="w-3 h-3" aria-hidden="true" />{t("report.secure")}
-              </span>
-              <span className="flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" aria-hidden="true" />{t("report.verified")}
-              </span>
+              <span className="flex items-center gap-1"><Shield className="w-3 h-3" aria-hidden="true" />{t("report.secure")}</span>
+              <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3" aria-hidden="true" />{t("report.verified")}</span>
             </div>
           </div>
         </div>

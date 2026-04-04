@@ -33,17 +33,21 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   }, [value])
 
   function formatAlgerianNumber(phone: string): string {
-    // Garde uniquement les chiffres et le +
+    // Étape 1 : retirer tout sauf chiffres et + (pour détecter le préfixe +213)
     let cleaned = phone.replace(/[^\d+]/g, "")
-    if (cleaned.startsWith("+213")) cleaned = "0" + cleaned.substring(4)
-    else if (cleaned.startsWith("213") && cleaned.length > 3) cleaned = "0" + cleaned.substring(3)
-    if (cleaned.startsWith("0")) return cleaned.substring(0, MAX_ALGERIAN_DIGITS)
-    if (/^[567]\d{0,8}$/.test(cleaned)) return "0" + cleaned.substring(0, 9)
-    return cleaned.substring(0, MAX_ALGERIAN_DIGITS)
+    // Étape 2 : normaliser les préfixes internationaux
+    if (cleaned.startsWith("+213"))       cleaned = "0" + cleaned.slice(4)
+    else if (cleaned.startsWith("00213")) cleaned = "0" + cleaned.slice(5)
+    else if (/^213\d/.test(cleaned))      cleaned = "0" + cleaned.slice(3)
+    else if (/^[567]/.test(cleaned))      cleaned = "0" + cleaned
+    // Étape 3 : retirer TOUT ce qui n'est pas un chiffre (y compris le + restant)
+    cleaned = cleaned.replace(/\D/g, "")
+    // Étape 4 : limiter à 10 chiffres
+    return cleaned.slice(0, MAX_ALGERIAN_DIGITS)
   }
 
   function isValidPhone(phone: string): boolean {
-    return /^0[567][0-9]{8}$/.test(phone.replace(/\s/g, ""))
+    return /^0[567][0-9]{8}$/.test(phone)
   }
 
   useEffect(() => { onValidation(isValidPhone(value)) }, [value, onValidation])
@@ -60,9 +64,8 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // On laisse handleInputChange gérer tout — on ne bloque plus onKeyDown
-    const formatted = formatAlgerianNumber(e.target.value)
-    if (formatted.length <= MAX_ALGERIAN_DIGITS) onChange(formatted)
+    // Toujours appeler onChange — formatAlgerianNumber limite déjà à 10 chiffres purs
+    onChange(formatAlgerianNumber(e.target.value))
   }
 
   const pasteLabel = language === "ar" ? "لصق من الحافظة" : "Coller depuis le presse-papier"
@@ -110,12 +113,12 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
                 <Check className="w-4 h-4" aria-hidden="true" />
                 {language === "ar" ? "رقم جزائري صحيح" : "Numéro algérien valide"}
               </span>
-            ) : value.length > 0 ? (
+            ) : value.length === MAX_ALGERIAN_DIGITS ? (
               <span className="text-red-500 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                 {language === "ar"
-                  ? "رقم غير صحيح (يبدأ بـ 0 ويحتوي على 10 أرقام)"
-                  : "Numéro invalide (doit commencer par 0, 10 chiffres)"}
+                  ? "رقم غير صحيح (يجب أن يبدأ بـ 05 أو 06 أو 07)"
+                  : "Numéro invalide (doit commencer par 05, 06 ou 07)"}
               </span>
             ) : null}
           </div>

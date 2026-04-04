@@ -2,17 +2,25 @@
 
 import { useState } from "react"
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, AreaChart, Area,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
 } from "recharts"
 import {
   Shield, TrendingUp, AlertTriangle, Clock, Phone,
   MapPin, FileText, LogOut, RefreshCw, Eye, EyeOff,
-  ChevronUp, ChevronDown, Activity,
+  Activity, Users, Search, ChevronUp, ChevronDown,
 } from "lucide-react"
 
 interface AdminStats {
-  overview: { total: number; today: number; week: number; month: number }
+  overview: {
+    totalReports: number
+    uniquePhones: number
+    today: number
+    week: number
+    month: number
+    totalChecks: number
+    totalVisits: number
+  }
   reasons: { name: string; count: number }[]
   topNumbers: { phone: string; count: number }[]
   recentReports: { phone: string; reason: string; customReason?: string; country?: string; city?: string; createdAt: string }[]
@@ -22,28 +30,6 @@ interface AdminStats {
 
 const COLORS = ["#dc2626", "#f59e0b", "#6366f1", "#10b981", "#8b5cf6", "#f43f5e"]
 
-const REASON_LABELS: Record<string, string> = {
-  "Product dissatisfaction": "Insatisfaction produit",
-  "Refused to open package": "Refus d'ouvrir le colis",
-  "Package damaged during delivery": "Colis endommagé",
-  "Customer changed mind": "Changement d'avis",
-  "Other": "Autre",
-  "عدم الرضا عن المنتج": "Insatisfaction produit",
-  "رفض فتح الطرد": "Refus d'ouvrir le colis",
-  "تلف الطرد أثناء التوصيل": "Colis endommagé",
-  "تغيير رأي العميل": "Changement d'avis",
-  "أخرى": "Autre",
-}
-
-function mergeReasons(reasons: { name: string; count: number }[]) {
-  const merged: Record<string, number> = {}
-  for (const r of reasons) {
-    const label = REASON_LABELS[r.name] || r.name
-    merged[label] = (merged[label] || 0) + r.count
-  }
-  return Object.entries(merged).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
-}
-
 function formatDate(s: string) {
   return new Date(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
 }
@@ -51,28 +37,23 @@ function formatDateTime(s: string) {
   return new Date(s).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
 }
 
-function StatCard({ icon: Icon, label, value, sub, color, trend }: any) {
+function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: number; color: string; sub?: string }) {
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div className={`p-3 rounded-xl ${color}`}>
+    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <div className={`p-2.5 rounded-xl ${color}`}>
           <Icon className="h-5 w-5 text-white" />
         </div>
-        {trend !== undefined && (
-          <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${trend >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>
-            {trend >= 0 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {Math.abs(trend)}%
-          </span>
-        )}
       </div>
-      <p className="text-3xl font-bold text-gray-900 mb-1">{value.toLocaleString()}</p>
+      <p className="text-2xl font-bold text-gray-900 mb-0.5">{value.toLocaleString("fr-FR")}</p>
       <p className="text-sm text-gray-500 font-medium">{label}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </div>
   )
 }
 
 export default function AdminPage() {
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -82,18 +63,18 @@ export default function AdminPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  async function fetchStats(pwd: string, refreshing = false) {
+  async function fetchStats(user: string, pwd: string, refreshing = false) {
     refreshing ? setIsRefreshing(true) : setIsLoading(true)
     setError("")
     try {
       const res = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pwd }),
+        body: JSON.stringify({ username: user, password: pwd }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(res.status === 401 ? "Mot de passe incorrect" : `Erreur: ${data.error || "Serveur indisponible"}`)
+        setError(res.status === 401 ? "Identifiants incorrects" : `Erreur: ${data.error || "Serveur indisponible"}`)
         return
       }
       setStats(data)
@@ -107,11 +88,11 @@ export default function AdminPage() {
     }
   }
 
+  // ── LOGIN ─────────────────────────────────────────────────────────────────
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-md">
-          {/* Logo area */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl mb-4">
               <Shield className="h-8 w-8 text-primary" />
@@ -121,10 +102,29 @@ export default function AdminPage() {
           </div>
 
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
-            <form onSubmit={(e) => { e.preventDefault(); if (password.trim()) fetchStats(password) }} className="space-y-5">
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (username.trim() && password.trim()) fetchStats(username, password) }}
+              className="space-y-4"
+            >
+              {/* Username */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Mot de passe administrateur
+                  Nom d'utilisateur
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="admin"
+                  autoComplete="username"
+                  className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Mot de passe
                 </label>
                 <div className="relative">
                   <input
@@ -132,9 +132,14 @@ export default function AdminPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••"
+                    autoComplete="current-password"
                     className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all pr-12"
                   />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
@@ -149,13 +154,12 @@ export default function AdminPage() {
 
               <button
                 type="submit"
-                disabled={isLoading || !password.trim()}
+                disabled={isLoading || !username.trim() || !password.trim()}
                 className="w-full py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Connexion...
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Connexion...
                   </span>
                 ) : "Se connecter"}
               </button>
@@ -166,8 +170,7 @@ export default function AdminPage() {
     )
   }
 
-  const mergedReasons = stats ? mergeReasons(stats.reasons) : []
-
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
@@ -177,18 +180,16 @@ export default function AdminPage() {
             <div className="p-1.5 bg-primary/10 rounded-lg">
               <Activity className="h-5 w-5 text-primary" />
             </div>
-            <div>
-              <span className="font-bold text-gray-900">DzRetour Admin</span>
-              {lastUpdated && (
-                <span className="text-xs text-gray-400 ml-3">
-                  Mis à jour à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
-            </div>
+            <span className="font-bold text-gray-900">DzRetour Admin</span>
+            {lastUpdated && (
+              <span className="text-xs text-gray-400 hidden sm:inline">
+                — Mis à jour à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => fetchStats(password, true)}
+              onClick={() => fetchStats(username, password, true)}
               disabled={isRefreshing}
               className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium text-gray-700 disabled:opacity-50"
             >
@@ -196,7 +197,7 @@ export default function AdminPage() {
               <span className="hidden sm:inline">Actualiser</span>
             </button>
             <button
-              onClick={() => { setIsAuthenticated(false); setStats(null); setPassword("") }}
+              onClick={() => { setIsAuthenticated(false); setStats(null); setUsername(""); setPassword("") }}
               className="flex items-center gap-2 px-3 py-2 text-sm bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors font-medium"
             >
               <LogOut className="h-4 w-4" />
@@ -209,20 +210,23 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {stats && (
           <>
-            {/* Overview */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <StatCard icon={FileText} label="Total signalements" value={stats.overview.total} color="bg-primary" />
-              <StatCard icon={Clock} label="Aujourd'hui" value={stats.overview.today} color="bg-amber-500" />
-              <StatCard icon={TrendingUp} label="7 derniers jours" value={stats.overview.week} color="bg-violet-500" />
-              <StatCard icon={Activity} label="30 derniers jours" value={stats.overview.month} color="bg-emerald-500" />
+            {/* ── Overview cards ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+              <StatCard icon={Users}     label="Visiteurs du site"        value={stats.overview.totalVisits}  color="bg-blue-500" />
+              <StatCard icon={Search}    label="Numéros vérifiés"         value={stats.overview.totalChecks}  color="bg-violet-500" />
+              <StatCard icon={Phone}     label="Numéros signalés (uniques)" value={stats.overview.uniquePhones} color="bg-primary" />
+              <StatCard icon={FileText}  label="Total signalements"        value={stats.overview.totalReports} color="bg-amber-500" />
+              <StatCard icon={Clock}     label="Aujourd'hui"              value={stats.overview.today}        color="bg-emerald-500" />
+              <StatCard icon={TrendingUp} label="7 derniers jours"        value={stats.overview.week}         color="bg-teal-500" />
+              <StatCard icon={Activity}  label="30 derniers jours"        value={stats.overview.month}        color="bg-indigo-500" />
             </div>
 
-            {/* Charts row */}
+            {/* ── Charts row ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
 
               {/* Area chart */}
               <div className="lg:col-span-2 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-gray-900">Activité — 30 derniers jours</h2>
                   <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">
                     {stats.overview.month} signalements
@@ -231,57 +235,53 @@ export default function AdminPage() {
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={stats.dailyChart}>
                     <defs>
-                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#dc2626" stopOpacity={0.15} />
                         <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 11, fill: "#9ca3af" }} interval={4} axisLine={false} tickLine={false} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={25} />
-                    <Tooltip
-                      labelFormatter={(v) => formatDate(v)}
-                      formatter={(v: any) => [v, "Signalements"]}
-                      contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
-                    />
-                    <Area type="monotone" dataKey="count" stroke="#dc2626" strokeWidth={2} fill="url(#colorCount)" dot={false} activeDot={{ r: 4 }} />
+                    <Tooltip labelFormatter={formatDate} formatter={(v: any) => [v, "Signalements"]}
+                      contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px" }} />
+                    <Area type="monotone" dataKey="count" stroke="#dc2626" strokeWidth={2} fill="url(#cg)" dot={false} activeDot={{ r: 4 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Pie chart */}
+              {/* Reasons pie */}
               <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-base font-bold text-gray-900 mb-4">Raisons</h2>
-                {mergedReasons.length > 0 ? (
+                <h2 className="text-base font-bold text-gray-900 mb-4">Raisons de retour</h2>
+                {stats.reasons.length > 0 ? (
                   <>
-                    <ResponsiveContainer width="100%" height={160}>
+                    <ResponsiveContainer width="100%" height={150}>
                       <PieChart>
-                        <Pie data={mergedReasons} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={65} innerRadius={35}>
-                          {mergedReasons.map((_, i) => (
-                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                          ))}
+                        <Pie data={stats.reasons} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={30}>
+                          {stats.reasons.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip formatter={(v: any) => [v, "signalements"]} contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px" }} />
+                        <Tooltip formatter={(v: any) => [v, "signalements"]}
+                          contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "13px" }} />
                       </PieChart>
                     </ResponsiveContainer>
-                    <div className="space-y-1.5 mt-2">
-                      {mergedReasons.map((r, i) => (
+                    <div className="space-y-2 mt-2">
+                      {stats.reasons.map((r, i) => (
                         <div key={i} className="flex items-center justify-between text-xs">
                           <span className="flex items-center gap-1.5 text-gray-600 truncate">
                             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                             {r.name}
                           </span>
-                          <span className="font-semibold text-gray-800 ml-2">{r.count}</span>
+                          <span className="font-semibold text-gray-800 ml-2 tabular-nums">{r.count}</span>
                         </div>
                       ))}
                     </div>
                   </>
                 ) : (
-                  <p className="text-gray-400 text-sm text-center py-12">Aucune donnée</p>
+                  <p className="text-gray-400 text-sm text-center py-10">Aucune donnée</p>
                 )}
               </div>
             </div>
 
-            {/* Bottom row */}
+            {/* ── Bottom row ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
               {/* Top numbers */}
@@ -295,13 +295,11 @@ export default function AdminPage() {
                     <p className="text-gray-400 text-sm">Aucune donnée</p>
                   ) : stats.topNumbers.map((item, i) => (
                     <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                      <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${i === 0 ? "bg-primary text-white" : i === 1 ? "bg-amber-100 text-amber-700" : i === 2 ? "bg-gray-100 text-gray-600" : "text-gray-400"}`}>
-                        {i + 1}
-                      </span>
+                      <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        i === 0 ? "bg-primary text-white" : i === 1 ? "bg-amber-100 text-amber-700" : i === 2 ? "bg-gray-100 text-gray-600" : "text-gray-400 bg-gray-50"
+                      }`}>{i + 1}</span>
                       <span className="font-mono text-sm text-gray-700 flex-1">{item.phone}</span>
-                      <span className="text-xs font-semibold bg-red-50 text-primary px-2 py-1 rounded-lg whitespace-nowrap">
-                        {item.count}×
-                      </span>
+                      <span className="text-xs font-semibold bg-red-50 text-primary px-2 py-1 rounded-lg whitespace-nowrap">{item.count}×</span>
                     </div>
                   ))}
                 </div>
@@ -322,7 +320,7 @@ export default function AdminPage() {
                       <div key={i}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm text-gray-700 font-medium">{item.country || "Inconnu"}</span>
-                          <span className="text-xs text-gray-500">{item.count}</span>
+                          <span className="text-xs text-gray-500 tabular-nums">{item.count}</span>
                         </div>
                         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
@@ -333,7 +331,7 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Recent */}
+              {/* Recent reports */}
               <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-5">
                   <Clock className="h-4 w-4 text-primary" />
@@ -348,7 +346,7 @@ export default function AdminPage() {
                         <span className="font-mono text-sm font-semibold text-gray-800">{r.phone}</span>
                         {r.country && <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{r.country}</span>}
                       </div>
-                      <p className="text-xs text-gray-500 mb-1 truncate">{REASON_LABELS[r.reason] || r.reason}</p>
+                      <p className="text-xs text-gray-500 mb-1 truncate">{r.reason}{r.customReason ? ` — ${r.customReason}` : ""}</p>
                       <p className="text-xs text-gray-400">{formatDateTime(r.createdAt)}</p>
                     </div>
                   ))}

@@ -22,9 +22,11 @@ export function createRateLimiter() {
   // Nettoyage périodique pour éviter les fuites mémoire
   const cleanup = () => {
     const now = Date.now()
-    for (const [key, entry] of store.entries()) {
-      if (now > entry.resetTime) store.delete(key)
-    }
+    const keys = Array.from(store.keys())
+    keys.forEach(key => {
+      const entry = store.get(key)
+      if (entry && now > entry.resetTime) store.delete(key)
+    })
   }
   // Nettoyage toutes les 5 minutes
   if (typeof setInterval !== "undefined") {

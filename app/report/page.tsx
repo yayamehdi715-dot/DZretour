@@ -1,3 +1,4 @@
+// 📁 EMPLACEMENT : app/report/page.tsx  (remplace l'existant)
 "use client"
 
 import type React from "react"
@@ -322,7 +323,7 @@ export default function ReportPage() {
                   <button
                     type="button"
                     aria-labelledby="reason-label"
-                    aria-expanded={isDropdownOpen}
+                    aria-expanded={isDropdownOpen ? "true" : "false"}
                     aria-haspopup="listbox"
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                     className={`w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-white flex items-center justify-between hover:border-slate-300 focus:outline-none ${language === "ar" ? "text-right" : "text-left"}`}
@@ -336,14 +337,16 @@ export default function ReportPage() {
                   {isDropdownOpen && (
                     <ul role="listbox" aria-labelledby="reason-label" className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
                       {reasons.map((r, i) => (
-                        <li key={i} role="option" aria-selected={reason === r}>
-                          <button
-                            type="button"
-                            onClick={() => { setReason(r); setIsDropdownOpen(false) }}
-                            className={`w-full px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 focus:outline-none focus:bg-slate-50 ${language === "ar" ? "text-right" : "text-left"} ${reason === r ? "bg-primary/5 text-primary font-medium" : "text-slate-700"}`}
-                          >
-                            {r}
-                          </button>
+                        <li
+                          key={i}
+                          role="option"
+                          aria-selected={reason === r ? "true" : "false"}
+                          tabIndex={0}
+                          onClick={() => { setReason(r); setIsDropdownOpen(false) }}
+                          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReason(r); setIsDropdownOpen(false) } }}
+                          className={`px-4 py-3 cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 focus:outline-none focus:bg-slate-50 ${language === "ar" ? "text-right" : "text-left"} ${reason === r ? "bg-primary/5 text-primary font-medium" : "text-slate-700"}`}
+                        >
+                          {r}
                         </li>
                       ))}
                     </ul>
@@ -399,7 +402,7 @@ export default function ReportPage() {
               <button
                 type="submit"
                 disabled={!canSubmit || isLoading}
-                aria-disabled={!canSubmit || isLoading}
+                aria-disabled={!canSubmit || isLoading ? "true" : "false"}
                 className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-3 min-h-[48px]"
               >
                 {isLoading ? (

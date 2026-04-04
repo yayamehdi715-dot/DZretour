@@ -1,3 +1,4 @@
+// 📁 EMPLACEMENT : app/admin/page.tsx  (remplace l'existant)
 "use client"
 
 import { useState } from "react"
@@ -145,7 +146,7 @@ function AddNumbersPanel({ username, password, onSuccess }: { username: string; 
             <button
               type="button"
               aria-labelledby="add-reason-label"
-              aria-expanded={dropdownOpen}
+              aria-expanded={dropdownOpen ? "true" : "false"}
               aria-haspopup="listbox"
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
@@ -159,14 +160,16 @@ function AddNumbersPanel({ username, password, onSuccess }: { username: string; 
             {dropdownOpen && (
               <ul role="listbox" aria-labelledby="add-reason-label" className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
                 {REASONS_FR.map(r => (
-                  <li key={r} role="option" aria-selected={reason === r}>
-                    <button
-                      type="button"
-                      onClick={() => { setReason(r); setDropdownOpen(false) }}
-                      className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 focus:outline-none ${reason === r ? "bg-primary/5 text-primary font-medium" : "text-gray-700"}`}
-                    >
-                      {r}
-                    </button>
+                  <li
+                    key={r}
+                    role="option"
+                    aria-selected={reason === r ? "true" : "false"}
+                    tabIndex={0}
+                    onClick={() => { setReason(r); setDropdownOpen(false) }}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReason(r); setDropdownOpen(false) } }}
+                    className={`text-left px-4 py-3 text-sm cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 focus:outline-none focus:bg-gray-50 ${reason === r ? "bg-primary/5 text-primary font-medium" : "text-gray-700"}`}
+                  >
+                    {r}
                   </li>
                 ))}
               </ul>

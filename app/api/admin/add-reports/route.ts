@@ -1,34 +1,61 @@
 // 📁 EMPLACEMENT : app/api/admin/add-reports/route.ts  (remplace l'existant)
 import { type NextRequest, NextResponse } from "next/server"
-import { normalizePhone, isValidPhone, sanitizeString } from "@/lib/phone"
-import { verifyAdminCredentials, checkEnvVars } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-const VALID_REASONS = new Set([
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
+function verifyAdmin(username?: string, password?: string): boolean {
+  if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) return false
+  if (!username || !password) return false
+  return safeCompare(username, process.env.ADMIN_USER) &&
+         safeCompare(password, process.env.ADMIN_PASSWORD)
+}
+
+function normalizePhone(phone: string): string {
+  let cleaned = phone.trim().replace(/[\s\-\(\)\.]/g, "")
+  if (cleaned.startsWith("+213"))                           cleaned = "0" + cleaned.substring(4)
+  else if (cleaned.startsWith("00213"))                    cleaned = "0" + cleaned.substring(5)
+  else if (cleaned.startsWith("213") && cleaned.length === 12) cleaned = "0" + cleaned.substring(3)
+  else if (/^[567]\d{8}$/.test(cleaned))                   cleaned = "0" + cleaned
+  return cleaned
+}
+
+function isValidPhone(phone: string): boolean {
+  return /^0[567]\d{8}$/.test(phone)
+}
+
+function sanitize(str: string, max: number): string {
+  return str.slice(0, max).replace(/[\x00-\x1F\x7F]/g, "")
+}
+
+const VALID_REASONS = [
   "Product dissatisfaction", "Refused to open package",
   "Package damaged during delivery", "Customer changed mind", "Other",
   "عدم الرضا عن المنتج", "رفض فتح الطرد",
   "تلف الطرد أثناء التوصيل", "تغيير رأي العميل", "أخرى",
   "Insatisfaction produit", "Refus d'ouvrir le colis",
   "Colis endommagé à la livraison", "Changement d'avis du client", "Autre",
-])
+]
 
 export async function POST(request: NextRequest) {
-  // 1. Env check
-  const envError = checkEnvVars()
-  if (envError) {
+  if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: "Serveur mal configuré", code: "MISSING_ENV" }, { status: 500 })
   }
 
-  // 2. Parse
   let body: { username?: unknown; password?: unknown; phones?: unknown; reason?: unknown; customReason?: unknown }
   try { body = await request.json() }
   catch { return NextResponse.json({ error: "JSON invalide", code: "INVALID_JSON" }, { status: 400 }) }
 
-  // 3. Auth timing-safe
-  if (!verifyAdminCredentials(
+  if (!verifyAdmin(
     typeof body.username === "string" ? body.username : undefined,
     typeof body.password === "string" ? body.password : undefined,
   )) {
@@ -36,34 +63,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Identifiants incorrects", code: "INVALID_CREDENTIALS" }, { status: 401 })
   }
 
-  // 4. Validation des champs
   if (typeof body.phones !== "string" || typeof body.reason !== "string") {
     return NextResponse.json({ error: "Numéros et raison requis", code: "MISSING_FIELDS" }, { status: 400 })
   }
 
   const reason = body.reason.trim()
-  if (!VALID_REASONS.has(reason)) {
+  if (!VALID_REASONS.includes(reason)) {
     return NextResponse.json({ error: "Raison invalide", code: "INVALID_REASON" }, { status: 400 })
   }
 
   const customReason = typeof body.customReason === "string"
-    ? sanitizeString(body.customReason, 200).trim() || null
+    ? sanitize(body.customReason, 200).trim() || null
     : null
 
-  // 5. Parse et dédoublonnage des numéros dans la requête elle-même
-  const rawPhones = body.phones
-    .split(",")
-    .map(p => p.trim())
-    .filter(Boolean)
+  const rawPhones = body.phones.split(",").map(function(p: string) { return p.trim() }).filter(Boolean)
+  if (rawPhones.length === 0) return NextResponse.json({ error: "Aucun numéro", code: "EMPTY_PHONES" }, { status: 400 })
+  if (rawPhones.length > 100) return NextResponse.json({ error: "Maximum 100 numéros", code: "TOO_MANY" }, { status: 400 })
 
-  if (rawPhones.length === 0) {
-    return NextResponse.json({ error: "Aucun numéro fourni", code: "EMPTY_PHONES" }, { status: 400 })
-  }
-  if (rawPhones.length > 100) {
-    return NextResponse.json({ error: "Maximum 100 numéros à la fois", code: "TOO_MANY" }, { status: 400 })
-  }
-
-  // 6. Connexion DB
   let db: any
   try {
     const { getDb } = await import("@/lib/mongodb")
@@ -74,18 +90,18 @@ export async function POST(request: NextRequest) {
 
   const col = db.collection("reports")
   const now = new Date()
-  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
 
-  // 7. Normalisation + validation
-  const normalized: { raw: string; phone: string; valid: boolean }[] = rawPhones.map(raw => {
+  // Normalisation + validation
+  const normalized = rawPhones.map(function(raw: string) {
     const phone = normalizePhone(raw)
     return { raw, phone, valid: isValidPhone(phone) }
   })
 
-  const validPhones = normalized.filter(n => n.valid).map(n => n.phone)
+  const validPhones: string[] = normalized.filter(function(n: any) { return n.valid }).map(function(n: any) { return n.phone })
   const invalidResults = normalized
-    .filter(n => !n.valid)
-    .map(n => ({ phone: n.raw, status: "invalid" as const }))
+    .filter(function(n: any) { return !n.valid })
+    .map(function(n: any) { return { phone: n.raw, status: "invalid" } })
 
   if (validPhones.length === 0) {
     return NextResponse.json({
@@ -94,58 +110,55 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // 8. Vérification des doublons en une seule requête (optimisation)
-  const recentlyReported = await col.distinct("phoneNumber", {
+  // Vérification doublons en une requête
+  const recentlyReported: string[] = await col.distinct("phoneNumber", {
     phoneNumber: { $in: validPhones },
-    createdAt: { $gte: twentyFourHoursAgo },
+    reporterUserAgent: "admin-manual",
+    createdAt: { $gte: threeDaysAgo },
   })
-  const recentSet = new Set(recentlyReported as string[])
+  const recentSet = new Set(recentlyReported)
 
-  const toInsert = validPhones.filter(p => !recentSet.has(p))
+  const toInsert = validPhones.filter(function(p: string) { return !recentSet.has(p) })
   const duplicateResults = validPhones
-    .filter(p => recentSet.has(p))
-    .map(p => ({ phone: p, status: "duplicate" as const }))
+    .filter(function(p: string) { return recentSet.has(p) })
+    .map(function(p: string) { return { phone: p, status: "duplicate" } })
 
-  // 9. Insertion en batch (une seule requête pour tous les numéros valides)
   let addedCount = 0
-  const addedResults: { phone: string; status: "added" }[] = []
+  const addedResults: Array<{ phone: string; status: string }> = []
 
   if (toInsert.length > 0) {
-    const docs = toInsert.map(phone => ({
-      phoneNumber: phone,
-      reason,
-      customReason,
-      reporterIp: null,
-      reporterUserAgent: "admin-manual",
-      reporterCountry: null,
-      reporterCity: null,
-      reporterTimezone: null,
-      createdAt: now,
-      updatedAt: now,
-    }))
+    const docs = toInsert.map(function(phone: string) {
+      return {
+        phoneNumber: phone,
+        reason,
+        customReason,
+        reporterIp: null,
+        reporterUserAgent: "admin-manual",
+        reporterCountry: null,
+        reporterCity: null,
+        reporterTimezone: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
 
     try {
       await col.insertMany(docs, { ordered: false })
       addedCount = toInsert.length
-      addedResults.push(...toInsert.map(p => ({ phone: p, status: "added" as const })))
+      toInsert.forEach(function(p: string) { addedResults.push({ phone: p, status: "added" }) })
     } catch (err: any) {
-      // Gestion des erreurs partielles (ex: duplicate key en cas de race condition)
-      const inserted = err?.result?.insertedCount ?? 0
-      addedCount = inserted
-      console.error("[admin/add-reports] insertMany partial error:", err?.message)
+      addedCount = err?.result?.insertedCount ?? 0
+      console.error("[admin/add-reports] insertMany:", err?.message)
     }
   }
 
-  // 10. Mise à jour des stats (non-bloquante)
   if (addedCount > 0) {
     db.collection("app_stats").updateOne(
       { _id: "global" as any },
       { $inc: { totalReports: addedCount }, $set: { lastUpdated: now } },
       { upsert: true }
-    ).catch((err: any) => console.error("[admin/add-reports] Stats update:", err?.message))
+    ).catch(function() {})
   }
-
-  const allResults = [...invalidResults, ...duplicateResults, ...addedResults]
 
   return NextResponse.json({
     summary: {
@@ -154,6 +167,6 @@ export async function POST(request: NextRequest) {
       invalid:   invalidResults.length,
       duplicate: duplicateResults.length,
     },
-    results: allResults,
+    results: invalidResults.concat(duplicateResults).concat(addedResults),
   })
 }

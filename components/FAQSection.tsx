@@ -1,10 +1,11 @@
+// 📁 EMPLACEMENT : components/FAQSection.tsx  (remplace l'existant)
 "use client"
 
 import { useState } from "react"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { Plus, Minus } from "lucide-react"
 
-const FAQS = {
+const FAQS: Record<string, { q: string; a: string }[]> = {
   ar: [
     {
       q: "ما هو DzRetour؟",
@@ -20,11 +21,33 @@ const FAQS = {
     },
     {
       q: "كيف يُحسب مستوى الخطر؟",
-      a: "يعتمد مستوى الخطر على عدد التقارير وتاريخها. التقارير الحديثة تؤثر أكثر من القديمة. المستويات: آمن، منخفض، متوسط، مرتفع.",
+      a: "يعتمد مستوى الخطر على عدد التقارير. من 0 إلى 1 تقرير: آمن. من 2 إلى 3: مشبوه. من 4 إلى 5: خطر محتمل. 6 وما فوق: خطير جداً.",
     },
     {
       q: "هل بياناتي آمنة؟",
       a: "نعم. لا نجمع أي معلومات شخصية عن المستخدمين. فقط أرقام الهواتف المُبلَّغ عنها وأسباب الإبلاغ يتم حفظها.",
+    },
+  ],
+  fr: [
+    {
+      q: "Qu'est-ce que DzRetour ?",
+      a: "DzRetour est une plateforme communautaire qui aide les marchands algériens à se protéger des retourneurs en partageant des informations sur les numéros suspects.",
+    },
+    {
+      q: "Comment signaler un retourneur ?",
+      a: "Entrez simplement le numéro de téléphone et la raison du retour sur la page de signalement. Le processus prend moins d'une minute.",
+    },
+    {
+      q: "Le service est-il gratuit ?",
+      a: "Oui, entièrement gratuit pour tous les marchands en Algérie. Aucune inscription, aucun abonnement.",
+    },
+    {
+      q: "Comment le niveau de risque est-il calculé ?",
+      a: "Le niveau de risque est basé sur le nombre de signalements. 0–1 : sûr. 2–3 : suspect. 4–5 : probablement dangereux. 6+ : dangereux — à fuir.",
+    },
+    {
+      q: "Mes données sont-elles sécurisées ?",
+      a: "Oui. Nous ne collectons aucune information personnelle. Seuls les numéros signalés et les raisons sont enregistrés.",
     },
   ],
   en: [
@@ -42,7 +65,7 @@ const FAQS = {
     },
     {
       q: "How is the risk level calculated?",
-      a: "The risk level is based on the number and recency of reports. Recent reports carry more weight. Levels: safe, low, medium, high.",
+      a: "The risk level is based on the number of reports. 0–1: safe. 2–3: suspicious. 4–5: probably dangerous. 6+: dangerous — avoid.",
     },
     {
       q: "Is my data safe?",
@@ -54,7 +77,7 @@ const FAQS = {
 export default function FAQSection() {
   const { language } = useLanguage()
   const [openIndex, setOpenIndex] = useState<number | null>(0)
-  const faqs = FAQS[language] ?? FAQS.en
+  const faqs = FAQS[language] ?? FAQS.fr
   const isRtl = language === "ar"
 
   return (
@@ -83,20 +106,31 @@ export default function FAQSection() {
                 }`}
               >
                 <button
+                  type="button"
                   onClick={() => setOpenIndex(isOpen ? null : i)}
+                  aria-expanded={isOpen ? "true" : "false"}
+                  aria-controls={`faq-answer-${i}`}
                   className="w-full flex items-center justify-between gap-4 px-6 py-5 text-start"
                 >
                   <span className={`font-semibold text-base ${isOpen ? "text-primary" : "text-foreground"} transition-colors`}>
                     {faq.q}
                   </span>
-                  <span className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
-                    isOpen ? "bg-primary text-white" : "bg-gray-100 text-muted-foreground"
-                  }`}>
+                  <span
+                    aria-hidden="true"
+                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
+                      isOpen ? "bg-primary text-white" : "bg-gray-100 text-muted-foreground"
+                    }`}
+                  >
                     {isOpen ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   </span>
                 </button>
 
-                <div className={`overflow-hidden transition-all duration-300 ${isOpen ? "max-h-60" : "max-h-0"}`}>
+                <div
+                  id={`faq-answer-${i}`}
+                  role="region"
+                  aria-labelledby={`faq-question-${i}`}
+                  className={`overflow-hidden transition-all duration-300 ${isOpen ? "max-h-60" : "max-h-0"}`}
+                >
                   <p className="px-6 pb-5 text-muted-foreground leading-relaxed text-sm border-t border-gray-100 pt-4">
                     {faq.a}
                   </p>
@@ -106,7 +140,7 @@ export default function FAQSection() {
           })}
         </div>
 
-        {/* Still have questions */}
+        {/* Contact */}
         <div className="mt-12 text-center bg-white border border-border rounded-2xl p-8">
           <p className="text-muted-foreground mb-2 font-medium">
             {isRtl ? "هل لديك سؤال آخر؟" : "Vous avez d'autres questions ?"}

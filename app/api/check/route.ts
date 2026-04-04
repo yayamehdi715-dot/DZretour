@@ -45,12 +45,14 @@ export async function POST(request: NextRequest) {
     const { getDb } = await import("@/lib/mongodb")
     const db = await getDb()
 
+    interface ReportDoc { reason: string; customReason?: string | null; createdAt: Date | string }
+
     // Récupération des signalements + incrément compteur en parallèle
     const [reports] = await Promise.all([
-      db.collection("reports")
+      db.collection<ReportDoc>("reports")
         .find({ phoneNumber: normalizedPhone })
         .sort({ createdAt: 1 })
-        .project({ reason: 1, customReason: 1, createdAt: 1, _id: 0 })
+        .project<ReportDoc>({ reason: 1, customReason: 1, createdAt: 1, _id: 0 })
         .toArray(),
       db.collection("app_stats").updateOne(
         { _id: "global" as any },

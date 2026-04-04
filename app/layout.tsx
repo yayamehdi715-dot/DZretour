@@ -1,6 +1,7 @@
 // 📁 EMPLACEMENT : app/layout.tsx  (remplace l'existant)
 import type React from "react"
 import type { Metadata, Viewport } from "next"
+import Script from "next/script"
 import { Inter, Noto_Sans_Arabic } from "next/font/google"
 import "./globals.css"
 import { LanguageProvider } from "@/contexts/LanguageContext"
@@ -145,6 +146,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Footer />
           </div>
         </LanguageProvider>
+      {/* Google Analytics — remplace G-DRMEKP7VJF par ton Measurement ID */}
+      <Script
+        src="https://www.googletagmanager.com/gtag/js?id=G-DRMEKP7VJF"
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-DRMEKP7VJF', {
+            page_path: window.location.pathname,
+          });
+        `}
+      </Script>
       </body>
     </html>
   )

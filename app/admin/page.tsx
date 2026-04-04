@@ -1,7 +1,7 @@
 // 📁 EMPLACEMENT : app/admin/page.tsx  (remplace l'existant)
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -9,7 +9,7 @@ import {
 import {
   Shield, TrendingUp, AlertTriangle, Clock, Phone,
   MapPin, FileText, LogOut, RefreshCw, Eye, EyeOff,
-  Activity, Users, Search, Plus, CheckCircle, XCircle, ChevronDown,
+  Activity, Users, Search, Plus, CheckCircle, XCircle,
 } from "lucide-react"
 
 interface AdminStats {
@@ -57,8 +57,6 @@ function AddNumbersPanel({ username, password, onSuccess }: { username: string; 
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<AddResult | null>(null)
   const [error, setError] = useState("")
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!phones.trim()) return
@@ -96,37 +94,22 @@ function AddNumbersPanel({ username, password, onSuccess }: { username: string; 
           <p id="phones-hint" className="text-xs text-gray-400 mt-1">Format 0XXXXXXXXX — max 100</p>
         </div>
 
-        {/* Raison - OPTIONNELLE */}
+        {/* Raison - OPTIONNELLE — select natif, 0 ARIA manuel */}
         <div>
-          <label id="add-reason-label" className="block text-sm font-semibold text-gray-700 mb-2">
+          <label htmlFor="add-reason-select" className="block text-sm font-semibold text-gray-700 mb-2">
             Raison <span className="text-gray-400 font-normal text-xs">(optionnel)</span>
           </label>
-          <div className="relative">
-            <button type="button" aria-labelledby="add-reason-label" aria-expanded={dropdownOpen ? "true" : "false"} aria-haspopup="listbox"
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
-              <span className={reason ? "text-gray-900 text-sm" : "text-gray-400 text-sm"}>{reason || "Choisir une raison (optionnel)"}</span>
-              <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${dropdownOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-            </button>
-            {dropdownOpen && (
-              <ul role="listbox" aria-labelledby="add-reason-label" className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
-                <li role="option" aria-selected={reason === "" ? "true" : "false"} tabIndex={0}
-                  onClick={() => { setReason(""); setDropdownOpen(false) }}
-                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReason(""); setDropdownOpen(false) } }}
-                  className={`text-left px-4 py-3 text-sm cursor-pointer hover:bg-gray-50 border-b border-gray-100 focus:outline-none italic ${reason === "" ? "bg-primary/5 text-primary font-medium" : "text-gray-400"}`}>
-                  Aucune raison
-                </li>
-                {REASONS_FR.map(r => (
-                  <li key={r} role="option" aria-selected={reason === r ? "true" : "false"} tabIndex={0}
-                    onClick={() => { setReason(r); setDropdownOpen(false) }}
-                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReason(r); setDropdownOpen(false) } }}
-                    className={`text-left px-4 py-3 text-sm cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 focus:outline-none ${reason === r ? "bg-primary/5 text-primary font-medium" : "text-gray-700"}`}>
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <select
+            id="add-reason-select"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all appearance-none cursor-pointer"
+          >
+            <option value="">Aucune raison</option>
+            {REASONS_FR.map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
         </div>
 
         {/* Description optionnelle */}
@@ -186,20 +169,56 @@ function AddNumbersPanel({ username, password, onSuccess }: { username: string; 
   )
 }
 
+const SESSION_KEY = "dzr_admin_session"
+const SESSION_DURATION = 3 * 24 * 60 * 60 * 1000 // 3 jours en ms
+
+interface Session { username: string; password: string; expiry: number }
+
+function saveSession(user: string, pwd: string) {
+  const session: Session = { username: user, password: pwd, expiry: Date.now() + SESSION_DURATION }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+}
+
+function loadSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const session: Session = JSON.parse(raw)
+    if (Date.now() > session.expiry) { localStorage.removeItem(SESSION_KEY); return null }
+    return session
+  } catch { return null }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY)
+}
+
 // ── Main Admin Page ─────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [rememberMe, setRememberMe] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [error, setError] = useState("")
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  async function fetchStats(user: string, pwd: string, refreshing = false) {
-    refreshing ? setIsRefreshing(true) : setIsLoading(true)
+  // Au montage : vérifier si une session est enregistrée
+  useEffect(() => {
+    const session = loadSession()
+    if (session) {
+      fetchStats(session.username, session.password, false, true)
+    } else {
+      setIsCheckingSession(false)
+    }
+  }, [])
+
+  async function fetchStats(user: string, pwd: string, refreshing = false, silent = false) {
+    if (!silent) { refreshing ? setIsRefreshing(true) : setIsLoading(true) }
     setError("")
     try {
       const res = await fetch("/api/admin/stats", {
@@ -208,10 +227,48 @@ export default function AdminPage() {
         body: JSON.stringify({ username: user, password: pwd }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(res.status === 401 ? "Identifiants incorrects" : `Erreur : ${data.error || "Serveur indisponible"}`); return }
-      setStats(data); setIsAuthenticated(true); setLastUpdated(new Date())
-    } catch { setError("Impossible de contacter le serveur") }
-    finally { setIsLoading(false); setIsRefreshing(false) }
+      if (!res.ok) {
+        if (silent) { clearSession(); setIsCheckingSession(false); return }
+        setError(res.status === 401 ? "Identifiants incorrects" : `Erreur : ${data.error || "Serveur indisponible"}`)
+        return
+      }
+      setStats(data)
+      setIsAuthenticated(true)
+      setLastUpdated(new Date())
+    } catch {
+      if (silent) { setIsCheckingSession(false); return }
+      setError("Impossible de contacter le serveur")
+    } finally {
+      if (!silent) { setIsLoading(false); setIsRefreshing(false) }
+      setIsCheckingSession(false)
+    }
+  }
+
+  function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!username.trim() || !password.trim()) return
+    if (rememberMe) saveSession(username, password)
+    fetchStats(username, password)
+  }
+
+  function handleLogout() {
+    clearSession()
+    setIsAuthenticated(false)
+    setStats(null)
+    setUsername("")
+    setPassword("")
+  }
+
+  // ── CHARGEMENT SESSION ─────────────────────────────────────────────────────
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="h-8 w-8 text-primary animate-spin" aria-hidden="true" />
+          <p className="text-gray-500 text-sm">Vérification de la session...</p>
+        </div>
+      </div>
+    )
   }
 
   // ── LOGIN ─────────────────────────────────────────────────────────────────
@@ -225,7 +282,7 @@ export default function AdminPage() {
             <p className="text-gray-500 text-sm mt-1">DzRetour — Tableau de bord</p>
           </div>
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
-            <form onSubmit={e => { e.preventDefault(); if (username.trim() && password.trim()) fetchStats(username, password) }} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label htmlFor="admin-username" className="block text-sm font-semibold text-gray-700 mb-2">Nom d'utilisateur</label>
                 <input id="admin-username" type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" autoComplete="username"
@@ -243,6 +300,21 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Remember me */}
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  type="checkbox"
+                  id="remember-me"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded accent-primary cursor-pointer flex-shrink-0"
+                />
+                <label htmlFor="remember-me" className="text-sm text-gray-600 cursor-pointer select-none">
+                  Rester connecté pendant <span className="font-semibold text-gray-800">3 jours</span>
+                </label>
+              </div>
+
               {error && (
                 <div role="alert" className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
                   <AlertTriangle className="h-4 w-4 flex-shrink-0" aria-hidden="true" />{error}
@@ -283,7 +355,7 @@ export default function AdminPage() {
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />
               <span className="hidden sm:inline">Actualiser</span>
             </button>
-            <button type="button" onClick={() => { setIsAuthenticated(false); setStats(null); setUsername(""); setPassword("") }} aria-label="Se déconnecter"
+            <button type="button" onClick={handleLogout} aria-label="Se déconnecter"
               className="flex items-center gap-2 px-3 py-2 text-sm bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors font-medium border border-red-100">
               <LogOut className="h-4 w-4" aria-hidden="true" />
               <span className="hidden sm:inline">Déconnexion</span>
@@ -395,12 +467,13 @@ export default function AdminPage() {
                             <span className="text-sm text-gray-700 font-medium">{item.country || "Inconnu"}</span>
                             <span className="text-xs text-gray-500 tabular-nums">{item.count}</span>
                           </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"
-                            role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+                          <progress
+                            value={pct}
+                            max={100}
                             aria-label={`${item.country || "Inconnu"} : ${pct}%`}
-                            title={`${item.country || "Inconnu"} : ${pct}%`}>
-                            <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
+                            title={`${item.country || "Inconnu"} : ${pct}%`}
+                            className="w-full h-1.5 rounded-full overflow-hidden appearance-none [&::-webkit-progress-bar]:bg-gray-100 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-value]:rounded-full [&::-moz-progress-bar]:bg-primary [&::-moz-progress-bar]:rounded-full"
+                          />
                         </li>
                       )
                     })}

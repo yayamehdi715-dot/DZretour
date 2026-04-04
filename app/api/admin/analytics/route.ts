@@ -46,12 +46,8 @@ async function createServiceAccountJWT(credentials: any): Promise<string> {
 
   const signingInput = `${base64url(header)}.${base64url(payload)}`
 
-  // Import la clé privée RSA du compte de service
+  // Import la clé privée RSA — replace gère le double-escape dans Vercel
   const privateKey = credentials.private_key.replace(/\\n/g, "\n")
-  const keyData = privateKey
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\s/g, "")
 
   const { createSign } = await import("crypto")
   const sign = createSign("RSA-SHA256")

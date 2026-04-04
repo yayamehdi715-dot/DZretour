@@ -7,6 +7,7 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { Shield, CheckCircle, XCircle, ChevronDown, AlertTriangle, Check, Clipboard, X } from "lucide-react"
 import Link from "next/link"
 
+// ── PhoneInput ─────────────────────────────────────────────────────────────
 interface PhoneInputProps {
   value: string
   onChange: (value: string) => void
@@ -17,7 +18,6 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   const { language } = useLanguage()
   const [copied, setCopied] = useState(false)
   const [showPasteButton, setShowPasteButton] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
   const MAX_ALGERIAN_DIGITS = 10
 
   useEffect(() => {
@@ -32,16 +32,19 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
     checkClipboard()
   }, [value])
 
-  const formatAlgerianNumber = (phone: string) => {
+  function formatAlgerianNumber(phone: string): string {
+    // Garde uniquement les chiffres et le +
     let cleaned = phone.replace(/[^\d+]/g, "")
-    if (cleaned.startsWith("+213")) return "0" + cleaned.substring(4, 13)
-    if (cleaned.startsWith("213") && cleaned.length > 3) return "0" + cleaned.substring(3, 12)
+    if (cleaned.startsWith("+213")) cleaned = "0" + cleaned.substring(4)
+    else if (cleaned.startsWith("213") && cleaned.length > 3) cleaned = "0" + cleaned.substring(3)
     if (cleaned.startsWith("0")) return cleaned.substring(0, MAX_ALGERIAN_DIGITS)
-    if (cleaned.length === 9 && /^[567]/.test(cleaned)) return "0" + cleaned
+    if (/^[567]\d{0,8}$/.test(cleaned)) return "0" + cleaned.substring(0, 9)
     return cleaned.substring(0, MAX_ALGERIAN_DIGITS)
   }
 
-  const isValidPhone = (phone: string) => /^0[567][0-9]{8}$/.test(phone.replace(/\s/g, ""))
+  function isValidPhone(phone: string): boolean {
+    return /^0[567][0-9]{8}$/.test(phone.replace(/\s/g, ""))
+  }
 
   useEffect(() => { onValidation(isValidPhone(value)) }, [value, onValidation])
 
@@ -49,23 +52,17 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
     try {
       const text = await navigator.clipboard.readText()
       const formatted = formatAlgerianNumber(text.trim())
-      onChange(formatted); setCopied(true); setShowPasteButton(false)
+      onChange(formatted)
+      setCopied(true)
+      setShowPasteButton(false)
       setTimeout(() => setCopied(false), 2000)
     } catch {}
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // On laisse handleInputChange gérer tout — on ne bloque plus onKeyDown
     const formatted = formatAlgerianNumber(e.target.value)
     if (formatted.length <= MAX_ALGERIAN_DIGITS) onChange(formatted)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ([8,9,27,13,46,37,38,39,40].includes(e.keyCode) ||
-        (e.ctrlKey && [65,67,86,88,90].includes(e.keyCode)) ||
-        (e.shiftKey && [37,38,39,40].includes(e.keyCode))) return
-    const isNumber = (e.keyCode >= 48 && e.keyCode <= 57) || (e.keyCode >= 96 && e.keyCode <= 105)
-    if (!isNumber) { e.preventDefault(); return }
-    if (value.length >= MAX_ALGERIAN_DIGITS && e.keyCode !== 8 && e.keyCode !== 46) e.preventDefault()
   }
 
   const pasteLabel = language === "ar" ? "لصق من الحافظة" : "Coller depuis le presse-papier"
@@ -74,14 +71,15 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
     <div className="relative">
       <div className="relative">
         <input
-          ref={inputRef}
           id="phone-input"
           type="tel"
+          inputMode="numeric"
           value={value}
           onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
+          // ⚠️ PAS de onKeyDown — e.keyCode est déprécié et bloque les claviers AZERTY/mobile
           placeholder={language === "ar" ? "0xxxxxxxxx (10 أرقام)" : "0xxxxxxxxx (10 chiffres)"}
           maxLength={MAX_ALGERIAN_DIGITS}
+          autoComplete="tel"
           aria-required="true"
           aria-describedby="phone-hint phone-validation"
           className={`w-full py-3 text-lg border-2 border-slate-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-200 bg-white font-mono ${language === "ar" ? "text-right" : "text-left"} ${showPasteButton ? (language === "ar" ? "pl-14 pr-4" : "pr-14 pl-4") : "px-4"}`}
@@ -99,9 +97,11 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
           </button>
         )}
       </div>
+
       <div id="phone-hint" className={`mt-1 text-xs text-slate-400 ${language === "ar" ? "text-right" : "text-left"}`}>
         {value.length}/{MAX_ALGERIAN_DIGITS}
       </div>
+
       <div id="phone-validation" aria-live="polite">
         {value && (
           <div className={`mt-2 text-sm ${language === "ar" ? "text-right" : "text-left"}`}>
@@ -113,7 +113,9 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
             ) : value.length > 0 ? (
               <span className="text-red-500 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" aria-hidden="true" />
-                {language === "ar" ? "رقم غير صحيح (يبدأ بـ 0 ويحتوي على 10 أرقام)" : "Numéro invalide (doit commencer par 0, 10 chiffres)"}
+                {language === "ar"
+                  ? "رقم غير صحيح (يبدأ بـ 0 ويحتوي على 10 أرقام)"
+                  : "Numéro invalide (doit commencer par 0, 10 chiffres)"}
               </span>
             ) : null}
           </div>
@@ -130,7 +132,6 @@ function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
   const isFr = language === "fr"
   const isAr = language === "ar"
 
-  // Trap focus & close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel() }
     document.addEventListener("keydown", handleKey)
@@ -139,17 +140,9 @@ function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} aria-hidden="true" />
-
-      {/* Modal */}
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100">
-        <button
-          type="button"
-          onClick={onCancel}
-          aria-label="Fermer la fenêtre de confirmation"
-          className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-        >
+        <button type="button" onClick={onCancel} aria-label="Fermer" className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
           <X className="h-5 w-5 text-gray-400" aria-hidden="true" />
         </button>
 
@@ -162,11 +155,12 @@ function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
         <h2 id="confirm-title" className="text-xl font-bold text-gray-900 text-center mb-2">
           {isAr ? "تأكيد الإبلاغ" : isFr ? "Confirmer le signalement" : "Confirm Report"}
         </h2>
-
         <p className="text-gray-500 text-sm text-center mb-6 leading-relaxed">
-          {isAr ? "هل أنت متأكد من رغبتك في الإبلاغ عن هذا الرقم؟"
-           : isFr ? "Êtes-vous sûr de vouloir signaler ce numéro ?"
-           : "Are you sure you want to report this number?"}
+          {isAr
+            ? "هل أنت متأكد من رغبتك في الإبلاغ عن هذا الرقم؟"
+            : isFr
+            ? "Êtes-vous sûr de vouloir signaler ce numéro ?"
+            : "Are you sure you want to report this number?"}
         </p>
 
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 space-y-2">
@@ -177,24 +171,16 @@ function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
           {reason && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">{isAr ? "السبب" : isFr ? "Raison" : "Reason"}</span>
-              <span className="text-sm text-gray-700 text-end">{reason}</span>
+              <span className="text-sm text-gray-700">{reason}</span>
             </div>
           )}
         </div>
 
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
-          >
+          <button type="button" onClick={onCancel} className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-colors">
             {isAr ? "إلغاء" : isFr ? "Annuler" : "Cancel"}
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="flex-1 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-          >
+          <button type="button" onClick={onConfirm} className="flex-1 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors shadow-sm">
             {isAr ? "نعم، أبلغ" : isFr ? "Oui, signaler" : "Yes, report"}
           </button>
         </div>
@@ -232,7 +218,10 @@ export default function ReportPage() {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false)
     }
-    if (isDropdownOpen) { document.addEventListener("mousedown", handler); return () => document.removeEventListener("mousedown", handler) }
+    if (isDropdownOpen) {
+      document.addEventListener("mousedown", handler)
+      return () => document.removeEventListener("mousedown", handler)
+    }
   }, [isDropdownOpen])
 
   const handleValidation = useCallback((v: boolean) => setIsValid(v), [])
@@ -248,7 +237,7 @@ export default function ReportPage() {
     setIsLoading(true)
     setMessage("")
 
-    const requestBody: any = { phone: phone.replace(/\s/g, ""), reason }
+    const requestBody: Record<string, string> = { phone: phone.replace(/\s/g, ""), reason }
     if (reason === otherLabel && customReason.trim()) requestBody.customReason = customReason.trim()
 
     try {
@@ -258,16 +247,23 @@ export default function ReportPage() {
         body: JSON.stringify(requestBody),
       })
       const data = await response.json()
+
       if (response.ok) {
         setMessage(t("report.success"))
         setMessageType("success")
-        setPhone(""); setReason(""); setCustomReason(""); setAgreedToTerms(false); setIsValid(false)
+        setPhone(""); setReason(""); setCustomReason("")
+        setAgreedToTerms(false); setIsValid(false)
+
+        // Notifie HeroSection de rafraîchir les stats
+        window.dispatchEvent(new Event("dzretour:stats-updated"))
       } else {
         const msgs: Record<string, string> = {
-          DUPLICATE_REPORT: language === "ar" ? "تم الإبلاغ عن هذا الرقم مؤخراً" : "Ce numéro a déjà été signalé récemment",
-          RATE_LIMITED:     language === "ar" ? "تجاوزت الحد المسموح. حاول لاحقاً" : "Limite dépassée. Réessayez plus tard",
-          INVALID_PHONE:    language === "ar" ? "تنسيق رقم الهاتف غير صحيح" : "Format de numéro invalide",
-          INVALID_REASON:   language === "ar" ? "السبب المحدد غير صحيح" : "Raison invalide",
+          DUPLICATE_REPORT: language === "ar"
+            ? "لقد أبلغت بالفعل عن هذا الرقم. يمكنك إعادة الإبلاغ بعد 3 أيام."
+            : "Vous avez déjà signalé ce numéro. Réessayez dans 3 jours.",
+          RATE_LIMITED:   language === "ar" ? "تجاوزت الحد. حاول لاحقاً" : "Limite dépassée. Réessayez plus tard",
+          INVALID_PHONE:  language === "ar" ? "تنسيق رقم غير صحيح" : "Format de numéro invalide",
+          INVALID_REASON: language === "ar" ? "السبب غير صحيح" : "Raison invalide",
         }
         setMessage(msgs[data.code] || data.error || t("report.error"))
         setMessageType("error")
@@ -361,7 +357,7 @@ export default function ReportPage() {
                     <textarea
                       id="custom-reason"
                       value={customReason}
-                      onChange={(e) => setCustomReason(e.target.value)}
+                      onChange={e => setCustomReason(e.target.value)}
                       placeholder={language === "ar" ? "اكتب السبب..." : "Écrivez la raison..."}
                       className={`w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white resize-none ${language === "ar" ? "text-right" : "text-left"}`}
                       rows={3}
@@ -377,16 +373,14 @@ export default function ReportPage() {
 
               {/* Terms */}
               <div className="flex items-start gap-3 p-4 bg-slate-50/50 rounded-xl border border-slate-200/50">
-                <div className="relative flex-shrink-0 mt-0.5">
-                  <input
-                    type="checkbox"
-                    id="terms-agreement"
-                    checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    className="w-5 h-5 rounded accent-primary cursor-pointer"
-                    aria-required="true"
-                  />
-                </div>
+                <input
+                  type="checkbox"
+                  id="terms-agreement"
+                  checked={agreedToTerms}
+                  onChange={e => setAgreedToTerms(e.target.checked)}
+                  className="w-5 h-5 mt-0.5 rounded accent-primary cursor-pointer flex-shrink-0"
+                  aria-required="true"
+                />
                 <label htmlFor="terms-agreement" className={`text-sm text-slate-700 leading-relaxed cursor-pointer ${language === "ar" ? "text-right" : "text-left"}`}>
                   {language === "ar" ? (
                     <>أوافق على{" "}<Link href="/terms" className="text-primary hover:text-primary/80 font-medium underline">شروط الاستخدام</Link>{" "}و{" "}<Link href="/privacy" className="text-primary hover:text-primary/80 font-medium underline">سياسة الخصوصية</Link></>
@@ -412,7 +406,6 @@ export default function ReportPage() {
                 )}
               </button>
 
-              {/* Message */}
               {message && (
                 <div
                   role="alert"

@@ -1,31 +1,23 @@
-// 📁 EMPLACEMENT : lib/auth.ts  (nouveau fichier à créer)
+// 📁 EMPLACEMENT : lib/auth.ts  (remplace l'existant)
+
 /**
- * Vérification des credentials admin.
- * Utilise une comparaison en temps constant pour éviter les timing attacks.
+ * Comparaison de chaînes en temps constant — évite les timing attacks.
+ * N'utilise PAS crypto Node.js pour éviter les erreurs d'import Next.js.
  */
-
-import { timingSafeEqual } from "crypto"
-
 function safeCompare(a: string, b: string): boolean {
-  try {
-    const bufA = Buffer.from(a)
-    const bufB = Buffer.from(b)
-    // timingSafeEqual exige des buffers de même longueur
-    if (bufA.length !== bufB.length) return false
-    return timingSafeEqual(bufA, bufB)
-  } catch {
-    return false
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
+  return result === 0
 }
 
 export function verifyAdminCredentials(username?: string, password?: string): boolean {
   if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) return false
   if (!username || !password) return false
-
   const validUser = safeCompare(username, process.env.ADMIN_USER)
   const validPass = safeCompare(password, process.env.ADMIN_PASSWORD)
-
-  // Les deux doivent être vrais (pas de court-circuit pour éviter les timing attacks)
   return validUser && validPass
 }
 

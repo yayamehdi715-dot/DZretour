@@ -8,7 +8,6 @@ export const runtime = "nodejs"
 
 const reportLimit = createRateLimiter()
 
-// Liste blanche des raisons valides (toutes les langues)
 const VALID_REASONS = new Set([
   "Product dissatisfaction", "Refused to open package",
   "Package damaged during delivery", "Customer changed mind", "Other",
@@ -19,7 +18,6 @@ const VALID_REASONS = new Set([
 ])
 
 async function getLocationFromIP(ip: string): Promise<{ country?: string; city?: string; timezone?: string }> {
-  // Ne pas lookup les IP locales / inconnues
   if (!ip || ip === "unknown" || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) {
     return {}
   }
@@ -35,12 +33,11 @@ async function getLocationFromIP(ip: string): Promise<{ country?: string; city?:
     const data = await res.json()
     if (data.error) return {}
     return {
-      country:  data.country_code  ?? null,
-      city:     data.city          ?? null,
-      timezone: data.timezone      ?? null,
+      country:  data.country_code ?? null,
+      city:     data.city         ?? null,
+      timezone: data.timezone     ?? null,
     }
   } catch {
-    // Fallback silencieux — la géolocalisation est non-critique
     return {}
   }
 }
@@ -52,7 +49,7 @@ export async function POST(request: NextRequest) {
     const ip = (forwardedFor?.split(",")[0] ?? realIp ?? "unknown").trim()
     const userAgent = request.headers.get("user-agent") ?? null
 
-    // Rate limit : 3 signalements / heure / IP
+    // Rate limit global : 3 signalements / heure / IP (protège contre le spam)
     const rl = reportLimit(ip, 60 * 60 * 1000, 3)
     if (!rl.allowed) {
       return NextResponse.json(
@@ -61,12 +58,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse
     let body: { phone?: unknown; reason?: unknown; customReason?: unknown }
     try { body = await request.json() }
     catch { return NextResponse.json({ error: "JSON invalide", code: "INVALID_JSON" }, { status: 400 }) }
 
-    // Validation de type stricte
     if (typeof body.phone !== "string" || typeof body.reason !== "string") {
       return NextResponse.json({ error: "Numéro et raison requis", code: "MISSING_FIELDS" }, { status: 400 })
     }
@@ -81,7 +76,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Raison invalide", code: "INVALID_REASON" }, { status: 400 })
     }
 
-    // Sanitize customReason
     const customReason = typeof body.customReason === "string"
       ? sanitizeString(body.customReason, 200).trim() || null
       : null
@@ -90,55 +84,59 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
     const col = db.collection("reports")
 
-    // Anti-doublon : même numéro dans les 24h
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    const recentReport = await col.findOne(
-      { phoneNumber: cleanPhone, createdAt: { $gte: twentyFourHoursAgo } },
+    // Anti-doublon : même IP + même numéro dans les 3 JOURS
+    // (différentes IPs peuvent signaler le même numéro librement)
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    const recentByThisIP = await col.findOne(
+      {
+        phoneNumber: cleanPhone,
+        reporterIp: ip !== "unknown" ? ip : "__never__",
+        createdAt: { $gte: threeDaysAgo },
+      },
       { projection: { createdAt: 1, _id: 0 } }
     )
-    if (recentReport) {
+
+    if (recentByThisIP) {
       return NextResponse.json(
-        { error: "Ce numéro a déjà été signalé récemment", code: "DUPLICATE_REPORT", lastReported: recentReport.createdAt },
+        {
+          error: "Vous avez déjà signalé ce numéro récemment. Réessayez dans 3 jours.",
+          code: "DUPLICATE_REPORT",
+          lastReported: recentByThisIP.createdAt,
+        },
         { status: 409 }
       )
     }
 
-    // Géoloc en parallèle avec l'insert pour ne pas bloquer
-    const [locationData, result] = await Promise.all([
-      getLocationFromIP(ip),
-      col.insertOne({
-        phoneNumber: cleanPhone,
-        reason,
-        customReason,
-        reporterIp: ip !== "unknown" ? ip : null,
-        reporterUserAgent: userAgent ? sanitizeString(userAgent, 500) : null,
-        reporterCountry: null,  // sera mis à jour après géoloc
-        reporterCity: null,
-        reporterTimezone: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-    ])
+    // Insert immédiat pour ne pas bloquer la réponse
+    const now = new Date()
+    const result = await col.insertOne({
+      phoneNumber: cleanPhone,
+      reason,
+      customReason,
+      reporterIp: ip !== "unknown" ? ip : null,
+      reporterUserAgent: userAgent ? sanitizeString(userAgent, 500) : null,
+      reporterCountry: null,
+      reporterCity: null,
+      reporterTimezone: null,
+      createdAt: now,
+      updatedAt: now,
+    })
 
-    // Mise à jour asynchrone de la géoloc (non-bloquante pour la réponse)
-    if (locationData.country) {
-      col.updateOne(
-        { _id: result.insertedId },
-        { $set: {
-          reporterCountry:  locationData.country  ?? null,
-          reporterCity:     locationData.city     ?? null,
-          reporterTimezone: locationData.timezone ?? null,
-          updatedAt: new Date(),
-        }}
-      ).catch(err => console.error("[report] Geoloc update failed:", err))
-    }
+    // Géoloc et stats en arrière-plan (ne bloquent pas la réponse)
+    getLocationFromIP(ip).then(loc => {
+      if (loc.country) {
+        col.updateOne(
+          { _id: result.insertedId },
+          { $set: { reporterCountry: loc.country, reporterCity: loc.city ?? null, reporterTimezone: loc.timezone ?? null, updatedAt: new Date() } }
+        ).catch(() => {})
+      }
+    })
 
-    // Stats globales
     db.collection("app_stats").updateOne(
       { _id: "global" as any },
-      { $inc: { totalReports: 1 }, $set: { lastUpdated: new Date() } },
+      { $inc: { totalReports: 1 }, $set: { lastUpdated: now } },
       { upsert: true }
-    ).catch(err => console.error("[report] Stats update failed:", err))
+    ).catch(() => {})
 
     return NextResponse.json(
       { message: "Signalement soumis avec succès", id: result.insertedId.toString() },

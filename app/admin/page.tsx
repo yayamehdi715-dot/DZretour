@@ -566,8 +566,15 @@ export default function AdminPage() {
 
   useEffect(() => {
     const session = loadSession()
-    if (session) { fetchStats(session.username, session.password, false, true) }
-    else { setIsCheckingSession(false) }
+    if (session) {
+      // Restaure les credentials en state pour que GASection et AddSection
+      // reçoivent les bonnes valeurs dès le premier rendu
+      setUsername(session.username)
+      setPassword(session.password)
+      fetchStats(session.username, session.password, false, true)
+    } else {
+      setIsCheckingSession(false)
+    }
   }, [])
 
   async function fetchStats(user: string, pwd: string, refreshing = false, silent = false) {

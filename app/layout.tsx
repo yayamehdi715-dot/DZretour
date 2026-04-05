@@ -5,8 +5,7 @@ import Script from "next/script"
 import { Inter, Noto_Sans_Arabic } from "next/font/google"
 import "./globals.css"
 import { LanguageProvider } from "@/contexts/LanguageContext"
-import Header from "@/components/Header"
-import Footer from "@/components/Footer"
+import SiteLayout from "@/components/SiteLayout"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -138,13 +137,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${inter.variable} ${notoSansArabic.variable} antialiased`}>
         <LanguageProvider>
-          <div className="min-h-screen flex flex-col">
-            <Header />
-            <main className="flex-1" id="main-content">
-              {children}
-            </main>
-            <Footer />
-          </div>
+          <SiteLayout>
+            {children}
+          </SiteLayout>
         </LanguageProvider>
       {/* Google Analytics — remplace G-DRMEKP7VJF par ton Measurement ID */}
       <Script

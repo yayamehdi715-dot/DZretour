@@ -47,18 +47,26 @@ function fmtDT(s: string) { return new Date(s).toLocaleString("fr-FR", { day: "2
 function fmtDuration(s: number) { const m = Math.floor(s / 60); return m > 0 ? `${m}m ${s % 60}s` : `${s}s` }
 
 // ── Session ───────────────────────────────────────────────────────────────────
+// sessionStorage : effacé à la fermeture de l'onglet, jamais persité sur le disque.
+// Contrairement à localStorage, un XSS dans un autre onglet ne peut pas le lire.
 const SESSION_KEY = "dzr_admin_session"
-const SESSION_DURATION = 3 * 24 * 60 * 60 * 1000
+const SESSION_DURATION = 8 * 60 * 60 * 1000 // 8 heures max par session
 interface Session { username: string; password: string; expiry: number }
-function saveSession(u: string, p: string) { localStorage.setItem(SESSION_KEY, JSON.stringify({ username: u, password: p, expiry: Date.now() + SESSION_DURATION })) }
+function saveSession(u: string, p: string) {
+  if (typeof sessionStorage === "undefined") return
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ username: u, password: p, expiry: Date.now() + SESSION_DURATION }))
+}
 function loadSession(): Session | null {
+  if (typeof sessionStorage === "undefined") return null
   try {
-    const s: Session = JSON.parse(localStorage.getItem(SESSION_KEY) || "")
-    if (Date.now() > s.expiry) { localStorage.removeItem(SESSION_KEY); return null }
+    const s: Session = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "")
+    if (Date.now() > s.expiry) { sessionStorage.removeItem(SESSION_KEY); return null }
     return s
   } catch { return null }
 }
-function clearSession() { localStorage.removeItem(SESSION_KEY) }
+function clearSession() {
+  if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(SESSION_KEY)
+}
 
 // ── Shared components ─────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: string | number; color: string; sub?: string }) {
@@ -101,7 +109,10 @@ function GASection({ username, password }: { username: string; password: string 
     finally { setIsLoading(false) }
   }
 
-  useEffect(() => { fetchGA() }, [])
+  // Attend que les credentials soient disponibles avant d'appeler l'API
+  useEffect(() => {
+    if (username && password) fetchGA()
+  }, [username, password])
 
   const deviceIcon = (d: string) => {
     if (d === "mobile") return <Smartphone className="h-4 w-4" />
@@ -558,8 +569,15 @@ export default function AdminPage() {
 
   useEffect(() => {
     const session = loadSession()
-    if (session) { fetchStats(session.username, session.password, false, true) }
-    else { setIsCheckingSession(false) }
+    if (session) {
+      // Restaure les credentials en state pour que GASection et AddSection
+      // reçoivent les bonnes valeurs dès le premier rendu
+      setUsername(session.username)
+      setPassword(session.password)
+      fetchStats(session.username, session.password, false, true)
+    } else {
+      setIsCheckingSession(false)
+    }
   }, [])
 
   async function fetchStats(user: string, pwd: string, refreshing = false, silent = false) {
@@ -641,7 +659,7 @@ export default function AdminPage() {
                 <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded accent-primary cursor-pointer flex-shrink-0" />
                 <label htmlFor="remember-me" className="text-sm text-gray-600 cursor-pointer select-none">
-                  Rester connecté pendant <span className="font-semibold text-gray-800">3 jours</span>
+                  Mémoriser pendant <span className="font-semibold text-gray-800">cette session</span>
                 </label>
               </div>
               {error && (

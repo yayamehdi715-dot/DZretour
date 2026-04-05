@@ -1,16 +1,20 @@
-// 📁 EMPLACEMENT : lib/auth.ts  (remplace l'existant)
+import { timingSafeEqual } from "crypto"
 
 /**
- * Comparaison de chaînes en temps constant — évite les timing attacks.
- * N'utilise PAS crypto Node.js pour éviter les erreurs d'import Next.js.
+ * Comparaison de chaînes en temps constant — protège contre les timing attacks.
+ * Utilise crypto.timingSafeEqual (Node.js built-in, runtime = "nodejs").
+ * Effectue une comparaison factice même quand les longueurs diffèrent pour
+ * éviter les attaques par oracle de longueur.
  */
 function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  const bufA = Buffer.from(a, "utf8")
+  const bufB = Buffer.from(b, "utf8")
+  if (bufA.length !== bufB.length) {
+    // Comparaison factice en temps constant pour éviter le leak de longueur
+    timingSafeEqual(bufA, Buffer.alloc(bufA.length))
+    return false
   }
-  return result === 0
+  return timingSafeEqual(bufA, bufB)
 }
 
 export function verifyAdminCredentials(username?: string, password?: string): boolean {

@@ -11,20 +11,7 @@
 //   5. Copie tout le contenu du fichier JSON dans la variable GOOGLE_SERVICE_ACCOUNT_JSON
 
 import { type NextRequest, NextResponse } from "next/server"
-
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return result === 0
-}
-
-function verifyAdmin(username?: string, password?: string): boolean {
-  if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) return false
-  if (!username || !password) return false
-  return safeCompare(username, process.env.ADMIN_USER) &&
-         safeCompare(password, process.env.ADMIN_PASSWORD)
-}
+import { verifyAdminCredentials } from "@/lib/auth"
 
 // Crée un JWT signé RS256 pour le compte de service Google
 async function createServiceAccountJWT(credentials: any): Promise<string> {
@@ -111,7 +98,7 @@ export async function POST(request: NextRequest) {
   try { body = await request.json() }
   catch { return NextResponse.json({ error: "JSON invalide" }, { status: 400 }) }
 
-  if (!verifyAdmin(
+  if (!verifyAdminCredentials(
     typeof body.username === "string" ? body.username : undefined,
     typeof body.password === "string" ? body.password : undefined,
   )) {

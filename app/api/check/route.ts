@@ -1,6 +1,5 @@
-// 📁 EMPLACEMENT : app/api/check/route.ts  (remplace l'existant)
 import { type NextRequest, NextResponse } from "next/server"
-import { normalizePhone, isValidPhone } from "@/lib/phone"
+import { normalizePhone, isValidPhone, hashPhone } from "@/lib/phone"
 import { createRateLimiter } from "@/lib/rateLimit"
 import { getEffectiveCount, getRiskFromCount } from "@/lib/decay"
 
@@ -9,11 +8,22 @@ export const runtime = "nodejs"
 
 const checkLimit = createRateLimiter()
 
+/**
+ * Extrait et valide l'IP cliente depuis les headers.
+ */
+function extractIP(request: NextRequest): string {
+  const forwardedFor = request.headers.get("x-forwarded-for")
+  const realIp = request.headers.get("x-real-ip")
+  const raw = (forwardedFor?.split(",")[0] ?? realIp ?? "").trim()
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/
+  const ipv6 = /^[0-9a-fA-F:]{2,39}$/
+  if (ipv4.test(raw) || ipv6.test(raw)) return raw
+  return "unknown"
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const forwardedFor = request.headers.get("x-forwarded-for")
-    const realIp = request.headers.get("x-real-ip")
-    const ip = (forwardedFor?.split(",")[0] ?? realIp ?? "unknown").trim()
+    const ip = extractIP(request)
 
     // Rate limit : 100 vérifications / heure / IP
     const rateLimit = checkLimit(ip, 60 * 60 * 1000, 100)
@@ -24,12 +34,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse du body
     let body: { phone?: unknown }
     try { body = await request.json() }
     catch { return NextResponse.json({ error: "JSON invalide", code: "INVALID_JSON" }, { status: 400 }) }
 
-    // Validation de type
     if (typeof body.phone !== "string" || !body.phone.trim()) {
       return NextResponse.json({ error: "Numéro de téléphone requis", code: "MISSING_PHONE" }, { status: 400 })
     }
@@ -47,10 +55,15 @@ export async function POST(request: NextRequest) {
 
     interface ReportDoc { reason: string; customReason?: string | null; createdAt: Date | string }
 
-    // Récupération des signalements + incrément compteur en parallèle
+    // Requête compatible anciens (phoneNumber) et nouveaux (phoneHash) documents
+    const phoneHash = hashPhone(normalizedPhone)
+    const phoneFilter = phoneHash
+      ? { $or: [{ phoneHash }, { phoneNumber: normalizedPhone }] }
+      : { phoneNumber: normalizedPhone }
+
     const [reports] = await Promise.all([
       db.collection<ReportDoc>("reports")
-        .find({ phoneNumber: normalizedPhone })
+        .find(phoneFilter)
         .sort({ createdAt: 1 })
         .project<ReportDoc>({ reason: 1, customReason: 1, createdAt: 1, _id: 0 })
         .toArray(),

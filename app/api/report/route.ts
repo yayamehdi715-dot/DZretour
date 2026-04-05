@@ -1,6 +1,8 @@
-// 📁 EMPLACEMENT : app/api/report/route.ts  (remplace l'existant)
 import { type NextRequest, NextResponse } from "next/server"
-import { normalizePhone, isValidPhone, sanitizeString } from "@/lib/phone"
+import {
+  normalizePhone, isValidPhone, sanitizeString,
+  hashPhone, encryptPhone, maskPhone,
+} from "@/lib/phone"
 import { createRateLimiter } from "@/lib/rateLimit"
 
 export const dynamic = "force-dynamic"
@@ -51,11 +53,24 @@ async function getLocationFromIP(ip: string): Promise<{ country?: string; city?:
   }
 }
 
+/**
+ * Extrait et valide l'IP cliente depuis les headers.
+ * Accepte uniquement les formats IPv4 et IPv6 valides pour éviter les injections.
+ */
+function extractIP(request: NextRequest): string {
+  const forwardedFor = request.headers.get("x-forwarded-for")
+  const realIp = request.headers.get("x-real-ip")
+  const raw = (forwardedFor?.split(",")[0] ?? realIp ?? "").trim()
+  // Valide le format IPv4 ou IPv6
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/
+  const ipv6 = /^[0-9a-fA-F:]{2,39}$/
+  if (ipv4.test(raw) || ipv6.test(raw)) return raw
+  return "unknown"
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const forwardedFor = request.headers.get("x-forwarded-for")
-    const realIp = request.headers.get("x-real-ip")
-    const ip = (forwardedFor?.split(",")[0] ?? realIp ?? "unknown").trim()
+    const ip = extractIP(request)
     const userAgent = request.headers.get("user-agent") ?? null
 
     const rl = reportLimit(ip, 60 * 60 * 1000, 3)
@@ -96,24 +111,45 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
     const col = db.collection("reports")
 
+    // Calcul des champs de protection du numéro
+    const phoneHash      = hashPhone(cleanPhone)       // HMAC-SHA256 (recherche sécurisée)
+    const phoneEncrypted = encryptPhone(cleanPhone)    // AES-256-GCM (stockage chiffré)
+    const phoneMasked    = maskPhone(cleanPhone)       // Version masquée pour l'admin
+
     // Anti-doublon : même IP + même numéro dans les 3 jours
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    const phoneFilter = phoneHash
+      ? { $or: [{ phoneHash }, { phoneNumber: cleanPhone }] }
+      : { phoneNumber: cleanPhone }
+
     const recentByThisIP = await col.findOne(
-      { phoneNumber: cleanPhone, reporterIp: ip !== "unknown" ? ip : "__never__", createdAt: { $gte: threeDaysAgo } },
+      {
+        $and: [
+          phoneFilter,
+          { reporterIp: ip !== "unknown" ? ip : "__never__" },
+          { createdAt: { $gte: threeDaysAgo } },
+        ],
+      },
       { projection: { createdAt: 1, _id: 0 } }
     )
     if (recentByThisIP) {
       return NextResponse.json(
-        { error: "Vous avez déjà signalé ce numéro récemment. Réessayez dans 3 jours.", code: "DUPLICATE_REPORT", lastReported: recentByThisIP.createdAt },
+        {
+          error: "Vous avez déjà signalé ce numéro récemment. Réessayez dans 3 jours.",
+          code: "DUPLICATE_REPORT",
+          lastReported: recentByThisIP.createdAt,
+        },
         { status: 409 }
       )
     }
 
     const now = new Date()
-    const result = await col.insertOne({
-      phoneNumber: cleanPhone,
+
+    // Construction du document — ne stocke PAS le numéro en clair si PHONE_SECRET est défini
+    const doc: Record<string, unknown> = {
       reason,
       customReason,
+      phoneMasked,
       reporterIp: ip !== "unknown" ? ip : null,
       reporterUserAgent: userAgent ? sanitizeString(userAgent, 500) : null,
       reporterCountry: null,
@@ -121,7 +157,18 @@ export async function POST(request: NextRequest) {
       reporterTimezone: null,
       createdAt: now,
       updatedAt: now,
-    })
+    }
+
+    if (phoneHash && phoneEncrypted) {
+      // Mode sécurisé : numéro chiffré + hash pour la recherche
+      doc.phoneHash      = phoneHash
+      doc.phoneEncrypted = phoneEncrypted
+    } else {
+      // Fallback : numéro en clair (si PHONE_SECRET non configuré)
+      doc.phoneNumber = cleanPhone
+    }
+
+    const result = await col.insertOne(doc)
 
     getLocationFromIP(ip).then(loc => {
       if (loc.country) {

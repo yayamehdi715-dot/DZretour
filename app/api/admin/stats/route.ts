@@ -1,25 +1,9 @@
-// 📁 EMPLACEMENT : app/api/admin/stats/route.ts  (remplace l'existant)
 import { type NextRequest, NextResponse } from "next/server"
+import { verifyAdminCredentials } from "@/lib/auth"
+import { maskPhone } from "@/lib/phone"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-
-// Comparaison en temps constant — pas d'import crypto externe
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return result === 0
-}
-
-function verifyAdmin(username?: string, password?: string): boolean {
-  if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) return false
-  if (!username || !password) return false
-  return safeCompare(username, process.env.ADMIN_USER) &&
-         safeCompare(password, process.env.ADMIN_PASSWORD)
-}
 
 const REASON_MAP: Record<string, string> = {
   "Product dissatisfaction":        "Insatisfaction produit",
@@ -39,11 +23,6 @@ const REASON_MAP: Record<string, string> = {
   "Autre":                          "Autre",
 }
 
-function maskPhone(p: string): string {
-  if (!p || p.length < 6) return "****"
-  return p.substring(0, 4) + "****" + p.substring(p.length - 2)
-}
-
 export async function POST(request: NextRequest) {
   // 1. Vérification des variables d'environnement
   if (!process.env.ADMIN_USER || !process.env.ADMIN_PASSWORD) {
@@ -58,8 +37,8 @@ export async function POST(request: NextRequest) {
   try { body = await request.json() }
   catch { return NextResponse.json({ error: "JSON invalide", code: "INVALID_JSON" }, { status: 400 }) }
 
-  // 3. Auth
-  if (!verifyAdmin(
+  // 3. Auth via lib/auth partagée
+  if (!verifyAdminCredentials(
     typeof body.username === "string" ? body.username : undefined,
     typeof body.password === "string" ? body.password : undefined,
   )) {
@@ -87,27 +66,39 @@ export async function POST(request: NextRequest) {
 
     const [
       totalReports, todayReports, weekReports, monthReports,
-      uniquePhones, reasonsAgg, topNumbers, recentReports,
+      uniqueByPhone, uniqueByHash,
+      reasonsAgg, topNumbers, recentReports,
       dailyAgg, countriesAgg, appStats,
     ] = await Promise.all([
       col.countDocuments(),
       col.countDocuments({ createdAt: { $gte: startOfToday } }),
       col.countDocuments({ createdAt: { $gte: startOfWeek  } }),
       col.countDocuments({ createdAt: { $gte: startOfMonth } }),
+      // Numéros uniques — anciens documents (phoneNumber)
       col.distinct("phoneNumber"),
+      // Numéros uniques — nouveaux documents chiffrés (phoneHash)
+      col.distinct("phoneHash"),
       col.aggregate([
         { $group: { _id: "$reason", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]).toArray(),
+      // Regroupe par phoneHash (nouveaux) ou phoneNumber (anciens)
       col.aggregate([
-        { $group: { _id: "$phoneNumber", count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { $ifNull: ["$phoneHash", "$phoneNumber"] },
+            phoneMasked:  { $first: "$phoneMasked" },
+            phoneNumber:  { $first: "$phoneNumber" },
+            count: { $sum: 1 },
+          },
+        },
         { $sort: { count: -1 } },
         { $limit: 10 },
       ]).toArray(),
       col.find({})
         .sort({ createdAt: -1 })
         .limit(10)
-        .project({ phoneNumber: 1, reason: 1, customReason: 1, reporterCountry: 1, reporterCity: 1, createdAt: 1, _id: 0 })
+        .project({ phoneMasked: 1, phoneNumber: 1, reason: 1, customReason: 1, reporterCountry: 1, reporterCity: 1, createdAt: 1, _id: 0 })
         .toArray(),
       col.aggregate([
         { $match: { createdAt: { $gte: startOfMonth } } },
@@ -126,10 +117,13 @@ export async function POST(request: NextRequest) {
       ),
     ])
 
+    // Déduplique les numéros uniques entre anciens et nouveaux documents
+    const uniquePhones = (uniqueByPhone as string[]).filter(Boolean).length
+                       + (uniqueByHash as string[]).filter(Boolean).length
+
     // Fusion des raisons multi-langues
     const mergedReasons: Record<string, number> = {}
-    for (let i = 0; i < reasonsAgg.length; i++) {
-      const r = reasonsAgg[i]
+    for (const r of reasonsAgg) {
       const label = REASON_MAP[r._id as string] ?? (r._id as string)
       mergedReasons[label] = (mergedReasons[label] ?? 0) + r.count
     }
@@ -137,7 +131,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       overview: {
         totalReports,
-        uniquePhones: uniquePhones.length,
+        uniquePhones,
         today:       todayReports,
         week:        weekReports,
         month:       monthReports,
@@ -145,21 +139,23 @@ export async function POST(request: NextRequest) {
         totalVisits: appStats?.totalVisits  ?? 0,
       },
       reasons: Object.entries(mergedReasons)
-        .map(function(e) { return { name: e[0], count: e[1] } })
-        .sort(function(a, b) { return b.count - a.count }),
-      topNumbers: topNumbers.map(function(i: any) { return { phone: maskPhone(i._id), count: i.count } }),
-      recentReports: recentReports.map(function(r: any) {
-        return {
-          phone:        maskPhone(r.phoneNumber),
-          reason:       REASON_MAP[r.reason] ?? r.reason,
-          customReason: r.customReason ?? null,
-          country:      r.reporterCountry ?? null,
-          city:         r.reporterCity    ?? null,
-          createdAt:    r.createdAt,
-        }
-      }),
-      dailyChart: dailyAgg.map(function(d: any) { return { date: d._id, count: d.count } }),
-      countries:  countriesAgg.map(function(c: any) { return { country: c._id, count: c.count } }),
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+      // Utilise phoneMasked (déjà masqué) ou masque phoneNumber (anciens docs)
+      topNumbers: topNumbers.map((i: any) => ({
+        phone: i.phoneMasked ?? maskPhone(i.phoneNumber ?? ""),
+        count: i.count,
+      })),
+      recentReports: recentReports.map((r: any) => ({
+        phone:        r.phoneMasked ?? maskPhone(r.phoneNumber ?? ""),
+        reason:       REASON_MAP[r.reason] ?? r.reason,
+        customReason: r.customReason ?? null,
+        country:      r.reporterCountry ?? null,
+        city:         r.reporterCity    ?? null,
+        createdAt:    r.createdAt,
+      })),
+      dailyChart: dailyAgg.map((d: any) => ({ date: d._id, count: d.count })),
+      countries:  countriesAgg.map((c: any) => ({ country: c._id, count: c.count })),
     })
   } catch (err: any) {
     console.error("[admin/stats] Query:", err?.message)

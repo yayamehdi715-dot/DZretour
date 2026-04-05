@@ -109,7 +109,10 @@ function GASection({ username, password }: { username: string; password: string 
     finally { setIsLoading(false) }
   }
 
-  useEffect(() => { fetchGA() }, [])
+  // Attend que les credentials soient disponibles avant d'appeler l'API
+  useEffect(() => {
+    if (username && password) fetchGA()
+  }, [username, password])
 
   const deviceIcon = (d: string) => {
     if (d === "mobile") return <Smartphone className="h-4 w-4" />

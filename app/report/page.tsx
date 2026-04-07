@@ -7,6 +7,19 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { Shield, CheckCircle, XCircle, ChevronDown, AlertTriangle, Check, Clipboard, X } from "lucide-react"
 import Link from "next/link"
 
+// ── Shared phone utils ─────────────────────────────────────────────────────
+const MAX_ALGERIAN_DIGITS = 10
+
+function formatAlgerianNumber(phone: string): string {
+  let cleaned = phone.replace(/[^\d+]/g, "")
+  if (cleaned.startsWith("+213"))       cleaned = "0" + cleaned.slice(4)
+  else if (cleaned.startsWith("00213")) cleaned = "0" + cleaned.slice(5)
+  else if (/^213\d/.test(cleaned))      cleaned = "0" + cleaned.slice(3)
+  else if (/^[567]/.test(cleaned))      cleaned = "0" + cleaned
+  cleaned = cleaned.replace(/\D/g, "")
+  return cleaned.slice(0, MAX_ALGERIAN_DIGITS)
+}
+
 // ── PhoneInput ─────────────────────────────────────────────────────────────
 interface PhoneInputProps {
   value: string
@@ -17,34 +30,9 @@ interface PhoneInputProps {
 function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   const { language } = useLanguage()
   const [copied, setCopied] = useState(false)
-  const [showPasteButton, setShowPasteButton] = useState(false)
-  const MAX_ALGERIAN_DIGITS = 10
-
-  useEffect(() => {
-    const checkClipboard = async () => {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        try {
-          const text = await navigator.clipboard.readText()
-          setShowPasteButton(!!(!value && text && /[\d\s\+\-\(\)]{8,}/.test(text)))
-        } catch { setShowPasteButton(false) }
-      }
-    }
-    checkClipboard()
-  }, [value])
-
-  function formatAlgerianNumber(phone: string): string {
-    // Étape 1 : retirer tout sauf chiffres et + (pour détecter le préfixe +213)
-    let cleaned = phone.replace(/[^\d+]/g, "")
-    // Étape 2 : normaliser les préfixes internationaux
-    if (cleaned.startsWith("+213"))       cleaned = "0" + cleaned.slice(4)
-    else if (cleaned.startsWith("00213")) cleaned = "0" + cleaned.slice(5)
-    else if (/^213\d/.test(cleaned))      cleaned = "0" + cleaned.slice(3)
-    else if (/^[567]/.test(cleaned))      cleaned = "0" + cleaned
-    // Étape 3 : retirer TOUT ce qui n'est pas un chiffre (y compris le + restant)
-    cleaned = cleaned.replace(/\D/g, "")
-    // Étape 4 : limiter à 10 chiffres
-    return cleaned.slice(0, MAX_ALGERIAN_DIGITS)
-  }
+  // Show paste button whenever input is empty — avoids proactive clipboard API calls
+  // which trigger permission errors on mobile devices
+  const showPasteButton = !value
 
   function isValidPhone(phone: string): boolean {
     return /^0[567][0-9]{8}$/.test(phone)
@@ -54,11 +42,19 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
 
   const handlePaste = async () => {
     try {
-      const text = await navigator.clipboard.readText()
-      onChange(formatAlgerianNumber(text.trim()))
-      setCopied(true); setShowPasteButton(false)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {}
+      // Try Clipboard API first; fall back to execCommand for mobile/older browsers
+      let text = ""
+      if (navigator.clipboard?.readText) {
+        text = await navigator.clipboard.readText()
+      }
+      if (text) {
+        onChange(formatAlgerianNumber(text.trim()))
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    } catch {
+      // If clipboard read fails, let the user paste manually via the keyboard
+    }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,6 +173,13 @@ function ConfirmModal({ phone, reason, onConfirm, onCancel, language }: {
 export default function ReportPage() {
   const { t, language } = useLanguage()
   const [phone, setPhone] = useState("")
+
+  // Pre-fill phone from URL param (?phone=...) when navigating from homepage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const p = params.get("phone")
+    if (p) setPhone(formatAlgerianNumber(p))
+  }, [])
   const [reason, setReason] = useState("")
   const [customReason, setCustomReason] = useState("")
   const [agreedToTerms, setAgreedToTerms] = useState(false)

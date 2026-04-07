@@ -9,17 +9,24 @@ export async function GET() {
     const { getDb } = await import("@/lib/mongodb")
     const db = await getDb()
 
-    const [uniquePhones, appStats] = await Promise.all([
+    const [uniqueByNumber, uniqueByHash, appStats] = await Promise.all([
+      // Anciens documents (avant chiffrement) — champ phoneNumber
       db.collection("reports").distinct("phoneNumber"),
+      // Nouveaux documents (après chiffrement) — champ phoneHash
+      db.collection("reports").distinct("phoneHash"),
       db.collection("app_stats").findOne(
         { _id: "global" as any },
         { projection: { totalChecks: 1, totalVisits: 1, _id: 0 } }
       ),
     ])
 
+    const uniqueReportedPhones =
+      (uniqueByNumber as string[]).filter(Boolean).length +
+      (uniqueByHash   as string[]).filter(Boolean).length
+
     return NextResponse.json(
       {
-        uniqueReportedPhones: uniquePhones.length,
+        uniqueReportedPhones,
         totalChecks:  appStats?.totalChecks  ?? 0,
         totalVisits:  appStats?.totalVisits  ?? 0,
       },

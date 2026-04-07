@@ -123,11 +123,17 @@ export default function HeroSection() {
 
           {/* CTA buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center mb-16">
-            <Link href="/report" className="btn-primary flex items-center gap-2 px-8 py-4 w-full sm:w-auto">
+            <Link
+              href={phone.replace(/\s/g, "").length >= 9 ? `/report?phone=${encodeURIComponent(phone.replace(/\s/g, ""))}` : "/report"}
+              className="btn-primary flex items-center gap-2 px-8 py-4 w-full sm:w-auto"
+            >
               <Shield className="h-5 w-5" aria-hidden="true" />
               {t("hero.cta.report")}
             </Link>
-            <Link href="/check" className="flex items-center gap-2 px-8 py-4 rounded-xl border-2 border-border text-foreground font-semibold hover:border-primary hover:text-primary transition-all duration-200 w-full sm:w-auto justify-center bg-white">
+            <Link
+              href={phone.replace(/\s/g, "").length >= 9 ? `/check?phone=${encodeURIComponent(phone.replace(/\s/g, ""))}` : "/check"}
+              className="flex items-center gap-2 px-8 py-4 rounded-xl border-2 border-border text-foreground font-semibold hover:border-primary hover:text-primary transition-all duration-200 w-full sm:w-auto justify-center bg-white"
+            >
               <Search className="h-5 w-5" aria-hidden="true" />
               {t("hero.cta.check")}
             </Link>

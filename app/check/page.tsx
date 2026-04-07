@@ -1,10 +1,27 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { Search, Shield, AlertTriangle, CheckCircle, Clock, TrendingUp, Info, Eye, EyeOff, Clipboard, Check } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { Search, Shield, AlertTriangle, CheckCircle, TrendingUp, Info, Eye, EyeOff, Clipboard, Check } from "lucide-react"
 
+// ── Shared phone utils ─────────────────────────────────────────────────────
+const MAX_ALGERIAN_DIGITS = 10
+
+function formatAlgerianNumber(phone: string): string {
+  let cleaned = phone.replace(/[^\d+]/g, "")
+  if (cleaned.startsWith("+213"))       cleaned = "0" + cleaned.slice(4)
+  else if (cleaned.startsWith("00213")) cleaned = "0" + cleaned.slice(5)
+  else if (/^213\d/.test(cleaned))      cleaned = "0" + cleaned.slice(3)
+  else if (/^[567]/.test(cleaned))      cleaned = "0" + cleaned
+  cleaned = cleaned.replace(/\D/g, "")
+  return cleaned.slice(0, MAX_ALGERIAN_DIGITS)
+}
+
+function isValidPhone(phone: string): boolean {
+  return /^0[567]\d{8}$/.test(phone.replace(/\s/g, ""))
+}
+
+// ── PhoneInput ─────────────────────────────────────────────────────────────
 interface PhoneInputProps {
   value: string
   onChange: (value: string) => void
@@ -14,63 +31,9 @@ interface PhoneInputProps {
 function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
   const { language } = useLanguage()
   const [copied, setCopied] = useState(false)
-  const [showPasteButton, setShowPasteButton] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-  
-  // Algerian phone number constants
-  const ALGERIA_COUNTRY_CODE = "+213"
-  const MAX_ALGERIAN_DIGITS = 10 // 0xxxxxxxxx format
-  
-  // Check if clipboard API is available and if there's likely content to paste
-  useEffect(() => {
-    const checkClipboard = async () => {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        try {
-          const text = await navigator.clipboard.readText()
-          // Show paste button if clipboard contains something that looks like a phone number
-          setShowPasteButton(!!(!value && text && /[\d\s\+\-\(\)]{8,}/.test(text)))
-        } catch (err) {
-          setShowPasteButton(false)
-        }
-      }
-    }
-    
-    checkClipboard()
-  }, [value])
-
-  // Convert +213 format to Algerian local format (0xxxxxxxxx) - matches API normalization
-  const formatAlgerianNumber = (phone: string) => {
-    // Remove all spaces, dashes, parentheses, but keep + and digits
-    let cleaned = phone.replace(/[\s\-\(\)]/g, "")
-    
-    // Convert all formats to local format (0XXXXXXXXX) to match API normalization
-    if (cleaned.startsWith("+213")) {
-      // Convert +213xxxxxxxx to 0xxxxxxxx
-      cleaned = "0" + cleaned.substring(4)
-    } else if (cleaned.startsWith("00213")) {
-      // Convert 00213xxxxxxxx to 0xxxxxxxx
-      cleaned = "0" + cleaned.substring(5)
-    } else if (cleaned.startsWith("213")) {
-      // Convert 213xxxxxxxx to 0xxxxxxxx
-      cleaned = "0" + cleaned.substring(3)
-    } else if (cleaned.match(/^[567]\d{8}$/)) {
-      // If it starts with 5, 6, or 7 and has 9 digits total, add 0
-      cleaned = "0" + cleaned
-    }
-    // If it already starts with 0, keep it as is but limit length
-    if (cleaned.startsWith("0")) {
-      cleaned = cleaned.substring(0, MAX_ALGERIAN_DIGITS)
-    }
-    
-    return cleaned
-  }
-
-  // Validate Algerian phone number - matches API regex: /^0[567]\d{8}$/
-  const isValidPhone = (phone: string) => {
-    const cleaned = phone.replace(/\s/g, "")
-    // Match API validation exactly: starts with 0, followed by 5/6/7, then 8 digits
-    return /^0[567]\d{8}$/.test(cleaned)
-  }
+  // Show paste button whenever input is empty — avoids proactive clipboard API calls
+  // which trigger permission errors on mobile devices
+  const showPasteButton = !value
 
   useEffect(() => {
     onValidation(isValidPhone(value))
@@ -78,82 +41,46 @@ function PhoneInput({ value, onChange, onValidation }: PhoneInputProps) {
 
   const handlePaste = async () => {
     try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText()
-        const formattedNumber = formatAlgerianNumber(text.trim())
-        onChange(formattedNumber)
+      let text = ""
+      if (navigator.clipboard?.readText) {
+        text = await navigator.clipboard.readText()
+      }
+      if (text) {
+        onChange(formatAlgerianNumber(text.trim()))
         setCopied(true)
-        setShowPasteButton(false)
         setTimeout(() => setCopied(false), 2000)
       }
-    } catch (err) {
-      console.error('Failed to paste:', err)
+    } catch {
+      // Clipboard read failed; user can paste manually via keyboard
     }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const inputValue = e.target.value
-    const formattedNumber = formatAlgerianNumber(inputValue)
-    
-    // Only update if the formatted number is different or within limits
-    if (formattedNumber.length <= MAX_ALGERIAN_DIGITS) {
-      onChange(formattedNumber)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Allow: backspace, delete, tab, escape, enter, arrow keys
-    if ([8, 9, 27, 13, 46, 37, 38, 39, 40].indexOf(e.keyCode) !== -1 ||
-        // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z
-        (e.keyCode === 65 && e.ctrlKey === true) ||
-        (e.keyCode === 67 && e.ctrlKey === true) ||
-        (e.keyCode === 86 && e.ctrlKey === true) ||
-        (e.keyCode === 88 && e.ctrlKey === true) ||
-        (e.keyCode === 90 && e.ctrlKey === true) ||
-        // Allow: Shift+Arrow keys for text selection
-        (e.shiftKey && [37, 38, 39, 40].indexOf(e.keyCode) !== -1) ||
-        // Allow: Ctrl+Shift+Arrow keys for word selection
-        (e.ctrlKey && e.shiftKey && [37, 39].indexOf(e.keyCode) !== -1)) {
-      return
-    }
-    
-    // Allow numbers from main keyboard (0-9) and numpad (0-9)
-    const isNumber = (e.keyCode >= 48 && e.keyCode <= 57) || (e.keyCode >= 96 && e.keyCode <= 105)
-    
-    // Allow only numbers
-    if (!isNumber) {
-      e.preventDefault()
-      return
-    }
-    
-    // Stop input if max length reached (but allow backspace and delete)
-    if (value.length >= MAX_ALGERIAN_DIGITS && e.keyCode !== 8 && e.keyCode !== 46) {
-      e.preventDefault()
-    }
+    onChange(formatAlgerianNumber(e.target.value))
   }
 
   return (
     <div className="relative">
       <div className="relative">
         <input
-          ref={inputRef}
           type="tel"
+          inputMode="numeric"
           value={value}
           onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
           placeholder={language === "ar" ? "0xxxxxxxxx (10 أرقام)" : "0xxxxxxxxx (10 chiffres)"}
           maxLength={MAX_ALGERIAN_DIGITS}
+          autoComplete="tel"
           className={`
-            w-full py-3 text-lg border-2 border-slate-200 rounded-xl 
-            focus:border-primary focus:ring-4 focus:ring-primary/10 
+            w-full py-3 text-lg border-2 border-slate-200 rounded-xl
+            focus:border-primary focus:ring-4 focus:ring-primary/10
             transition-all duration-200 bg-white font-mono
             ${language === "ar" ? "text-right" : "text-left"}
-            ${showPasteButton 
-              ? (language === "ar" ? "pl-14 pr-4" : "pr-14 pl-4") 
+            ${showPasteButton
+              ? (language === "ar" ? "pl-14 pr-4" : "pr-14 pl-4")
               : "px-4"
             }
           `}
-          dir="ltr" // Always LTR for phone numbers regardless of language
+          dir="ltr"
         />
         
         {/* Paste button - positioned based on language direction */}
@@ -261,6 +188,13 @@ export default function CheckPage() {
   const [error, setError] = useState("")
   const [isValid, setIsValid] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+
+  // Pre-fill phone from URL param (?phone=...) when navigating from homepage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const p = params.get("phone")
+    if (p) setPhone(formatAlgerianNumber(p))
+  }, [])
 
   const checkPhone = async (phoneNumber: string) => {
     if (!phoneNumber || !isValid) return

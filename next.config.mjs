@@ -20,12 +20,6 @@ const nextConfig = {
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 jours
   },
 
-  async rewrites() {
-    return [
-      { source: "/sitemap.xml", destination: "/api/sitemap" },
-    ]
-  },
-
   async headers() {
     // Content Security Policy
     // - unsafe-inline requis par Next.js hydration + Tailwind inline styles
